@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Local proof-of-concept bootstrap hook for Polytoken.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+BOOTSTRAP_SKILL="${PLUGIN_ROOT}/skills/using-superpowers/SKILL.md"
+TOOL_MAPPING="${PLUGIN_ROOT}/skills/using-superpowers/references/polytoken-tools.md"
+
+if [[ ! -r "$BOOTSTRAP_SKILL" ]]; then
+  printf 'superpowers: unable to read %s\n' "$BOOTSTRAP_SKILL" >&2
+  exit 1
+fi
+if [[ ! -r "$TOOL_MAPPING" ]]; then
+  printf 'superpowers: unable to read %s\n' "$TOOL_MAPPING" >&2
+  exit 1
+fi
+
+python3 - "$BOOTSTRAP_SKILL" "$TOOL_MAPPING" "${POLYTOKEN_HOOK_EVENT:-session_start}" <<'PY'
+import json
+import pathlib
+import sys
+
+bootstrap_path = pathlib.Path(sys.argv[1])
+mapping_path = pathlib.Path(sys.argv[2])
+event = sys.argv[3]
+
+bootstrap = bootstrap_path.read_text(encoding="utf-8")
+mapping = mapping_path.read_text(encoding="utf-8")
+context = f"""<EXTREMELY_IMPORTANT>
+You have Superpowers in Polytoken.
+
+The using-superpowers skill is already loaded below. Follow it now; do not invoke using-superpowers again. For every other skill, use Polytoken's native skill tool. When instructions name superpowers:<name>, invoke the skill named <name>.
+
+{bootstrap}
+
+{mapping}
+</EXTREMELY_IMPORTANT>"""
+
+if event == "session_start":
+    payload = {"outcome": "allow", "additional_context": context}
+elif event == "post_compaction":
+    payload = {"outcome": "allow", "append_to_output": context}
+else:
+    raise SystemExit(f"unsupported Polytoken hook event: {event}")
+
+json.dump(payload, sys.stdout, ensure_ascii=False)
+sys.stdout.write("\n")
+PY
