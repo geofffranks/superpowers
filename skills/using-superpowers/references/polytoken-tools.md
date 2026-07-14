@@ -12,10 +12,10 @@ Use Polytoken's native tools when a Superpowers skill requests an action:
 - Search file contents → `grep`.
 - Run a shell command once → `shell_exec`.
 - Wait for an idempotent readiness condition → `shell_monitor`.
-- Dispatch a subagent → `subagent` with the requested type; use `general-purpose` when the skill requests a generic worker or reviewer.
+- Dispatch a subagent → `subagent` with the requested type. Skills name specific types (`implementer`, `reviewer`, `validator`, `plan-reviewer`, `researcher`); use the named type, and fall back to `general-purpose` only when no type is specified.
 - Track dispatched work → `job_status`, `job_block`, `job_result`, or `job_cancel`.
 - Create or update todos → `todo_create`, `todo_update`, and `todo_complete`.
 - Fetch a URL → `web_fetch`.
 - Search the web → `web_search` when a provider is configured.
 
-Subagents receive task-specific prompt files by content or explicit file reference; Superpowers reviewer and implementer Markdown files are prompts, not Polytoken subagent types.
+Subagent definitions (`implementer`, `reviewer`, `validator`) carry their own methodology; the skill's prompt-template files are dispatch recipes that pass task-specific context, not standalone prompts. Use the named subagent type and fill the template's placeholders.

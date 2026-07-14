@@ -28,8 +28,9 @@ You MUST create a task for each of these items and complete them in order:
 5. **Present design** — in sections scaled to their complexity, get user approval after each section
 6. **Write design doc** — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit
 7. **Spec self-review** — quick inline check for placeholders, contradictions, ambiguity, scope (see below)
-8. **User reviews written spec** — ask user to review the spec file before proceeding
-9. **Transition to implementation** — invoke writing-plans skill to create implementation plan
+8. **Dispatch plan-reviewer** — dispatch the `plan-reviewer` subagent (template: [spec-document-reviewer-prompt.md](spec-document-reviewer-prompt.md)) with the spec path; address every severity-classified finding before proceeding
+9. **User reviews written spec** — ask user to review the spec file before proceeding
+10. **Transition to implementation** — invoke writing-plans skill to create implementation plan
 
 ## Process Flow
 
@@ -52,7 +53,8 @@ digraph brainstorming {
     "User approves design?" -> "Present design sections" [label="no, revise"];
     "User approves design?" -> "Write design doc" [label="yes"];
     "Write design doc" -> "Spec self-review\n(fix inline)";
-    "Spec self-review\n(fix inline)" -> "User reviews spec?";
+    "Spec self-review\n(fix inline)" -> "Dispatch plan-reviewer\n(address findings)";
+    "Dispatch plan-reviewer\n(address findings)" -> "User reviews spec?";
     "User reviews spec?" -> "Write design doc" [label="changes requested"];
     "User reviews spec?" -> "Invoke writing-plans skill" [label="approved"];
 }
@@ -64,7 +66,7 @@ digraph brainstorming {
 
 **Understanding the idea:**
 
-- Check out the current project state first (files, docs, recent commits)
+- Check out the current project state first (files, docs, recent commits). **When the investigation is substantial** (large codebase, unfamiliar domain, many files to cross-reference), delegate to the `researcher` subagent instead of exploring inline — give it the research question, whether to look locally or externally, and your success criterion. This keeps your context clean for the design dialogue. For a quick check of a few files, explore inline.
 - Before asking detailed questions, assess scope: if the request describes multiple independent subsystems (e.g., "build a platform with chat, file storage, billing, and analytics"), flag this immediately. Don't spend questions refining details of a project that needs to be decomposed first.
 - If the project is too large for a single spec, help the user decompose into sub-projects: what are the independent pieces, how do they relate, what order should they be built? Then brainstorm the first sub-project through the normal design flow. Each sub-project gets its own spec → plan → implementation cycle.
 - For appropriately-scoped projects, ask questions one at a time to refine the idea
@@ -117,6 +119,12 @@ After writing the spec document, look at it with fresh eyes:
 4. **Ambiguity check:** Could any requirement be interpreted two different ways? If so, pick one and make it explicit.
 
 Fix any issues inline. No need to re-review — just fix and move on.
+
+**Plan-reviewer dispatch:** After the inline self-review, dispatch the
+`plan-reviewer` subagent with the spec path (template:
+spec-document-reviewer-prompt.md). The inline check is a quick first pass; the
+plan-reviewer is the thorough second pass. Address every severity-classified
+finding before asking the user to review.
 
 **User Review Gate:**
 After the spec review loop passes, ask the user to review the written spec before proceeding:

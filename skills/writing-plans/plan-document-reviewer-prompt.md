@@ -1,16 +1,14 @@
-# Plan Document Reviewer Prompt Template
+# Plan Document Reviewer Subagent Dispatch Template
 
-Use this template when dispatching a plan document reviewer subagent.
-
-**Purpose:** Verify the plan is complete, matches the spec, and has proper task decomposition.
-
-**Dispatch after:** The complete plan is written.
+Dispatch the `plan-reviewer` subagent to review the written plan for
+completeness, spec alignment, task decomposition, and buildability. The
+subagent inspects the document and relevant code/context, and returns
+severity-classified findings. Pass only the plan path and spec reference.
 
 ```
-Subagent (general-purpose):
-  description: "Review plan document"
+Subagent (plan-reviewer):
   prompt: |
-    You are a plan document reviewer. Verify this plan is complete and ready for implementation.
+    Review this plan document before it is handed off to implementation.
 
     **Plan to review:** [PLAN_FILE_PATH]
     **Spec for reference:** [SPEC_FILE_PATH]
@@ -24,26 +22,12 @@ Subagent (general-purpose):
     | Task Decomposition | Tasks have clear boundaries, steps are actionable |
     | Buildability | Could an engineer follow this plan without getting stuck? |
 
-    ## Calibration
-
-    **Only flag issues that would cause real problems during implementation.**
-    An implementer building the wrong thing or getting stuck is an issue.
-    Minor wording, stylistic preferences, and "nice to have" suggestions are not.
-
-    Approve unless there are serious gaps — missing requirements from the spec,
-    contradictory steps, placeholder content, or tasks so vague they can't be acted on.
-
-    ## Output Format
-
-    ## Plan Review
-
-    **Status:** Approved | Issues Found
-
-    **Issues (if any):**
-    - [Task X, Step Y]: [specific issue] - [why it matters for implementation]
-
-    **Recommendations (advisory, do not block approval):**
-    - [suggestions for improvement]
+    Flag only issues that would cause real problems during implementation.
+    Minor wording and stylistic preferences are not findings.
 ```
 
-**Reviewer returns:** Status, Issues (if any), Recommendations
+**Placeholders:**
+- `[PLAN_FILE_PATH]` — the plan document path
+- `[SPEC_FILE_PATH]` — the spec the plan was written from
+
+**plan-reviewer returns:** severity-classified findings that must be fixed or rebutted before handoff.

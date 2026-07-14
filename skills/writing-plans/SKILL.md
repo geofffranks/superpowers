@@ -26,6 +26,8 @@ If the spec covers multiple independent subsystems, it should have been broken i
 
 Before defining tasks, map out which files will be created or modified and what each one is responsible for. This is where decomposition decisions get locked in.
 
+**When the codebase investigation is substantial** (large codebase, unfamiliar domain, many files to cross-reference), delegate to the `researcher` subagent instead of exploring inline. Give it the research question, whether to look locally or externally, and your success criterion. For a quick check of a few files, explore inline.
+
 - Design units with clear boundaries and well-defined interfaces. Each file should have one clear responsibility.
 - You reason best about code you can hold in context at once, and your edits are more reliable when files are focused. Prefer smaller, focused files over large ones that do too much.
 - Files that change together should live together. Split by responsibility, not by technical layer.
@@ -143,7 +145,7 @@ Every step must contain the actual content an engineer needs. These are **plan f
 
 ## Self-Review
 
-After writing the complete plan, look at the spec with fresh eyes and check the plan against it. This is a checklist you run yourself — not a subagent dispatch.
+After writing the complete plan, look at the spec with fresh eyes and check the plan against it. This is a checklist you run yourself as a first pass — then dispatch the `plan-reviewer` subagent for a thorough second pass (see below).
 
 **1. Spec coverage:** Skim each section/requirement in the spec. Can you point to a task that implements it? List any gaps.
 
@@ -152,6 +154,14 @@ After writing the complete plan, look at the spec with fresh eyes and check the 
 **3. Type consistency:** Do the types, method signatures, and property names you used in later tasks match what you defined in earlier tasks? A function called `clearLayers()` in Task 3 but `clearFullLayers()` in Task 7 is a bug.
 
 If you find issues, fix them inline. No need to re-review — just fix and move on. If you find a spec requirement with no task, add the task.
+
+## Plan-reviewer dispatch
+
+After the inline self-review, dispatch the `plan-reviewer` subagent with the
+plan path and spec-for-reference path (template:
+plan-document-reviewer-prompt.md). The inline check is a quick first pass; the
+plan-reviewer is the thorough second pass. Address every severity-classified
+finding before the execution handoff.
 
 ## Execution Handoff
 

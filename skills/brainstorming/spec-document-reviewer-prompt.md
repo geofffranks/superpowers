@@ -1,16 +1,14 @@
-# Spec Document Reviewer Prompt Template
+# Spec Document Reviewer Subagent Dispatch Template
 
-Use this template when dispatching a spec document reviewer subagent.
-
-**Purpose:** Verify the spec is complete, consistent, and ready for implementation planning.
-
-**Dispatch after:** Spec document is written to docs/superpowers/specs/
+Dispatch the `plan-reviewer` subagent to review the written spec for
+completeness, internal consistency, scope, and ambiguity. The subagent
+inspects the document and relevant code/context, and returns severity-classified
+findings. Pass only the spec path and review criteria.
 
 ```
-Subagent (general-purpose):
-  description: "Review spec document"
+Subagent (plan-reviewer):
   prompt: |
-    You are a spec document reviewer. Verify this spec is complete and ready for planning.
+    Review this spec document before it is handed off to plan-writing.
 
     **Spec to review:** [SPEC_FILE_PATH]
 
@@ -18,32 +16,16 @@ Subagent (general-purpose):
 
     | Category | What to Look For |
     |----------|------------------|
-    | Completeness | TODOs, placeholders, "TBD", incomplete sections |
-    | Consistency | Internal contradictions, conflicting requirements |
-    | Clarity | Requirements ambiguous enough to cause someone to build the wrong thing |
-    | Scope | Focused enough for a single plan — not covering multiple independent subsystems |
-    | YAGNI | Unrequested features, over-engineering |
+    | Placeholders | TBD, TODO, incomplete sections, vague requirements |
+    | Internal consistency | Do sections contradict each other? Does architecture match feature descriptions? |
+    | Scope | Focused enough for a single implementation plan, or needs decomposition? |
+    | Ambiguity | Could any requirement be interpreted two ways? |
 
-    ## Calibration
-
-    **Only flag issues that would cause real problems during implementation planning.**
-    A missing section, a contradiction, or a requirement so ambiguous it could be
-    interpreted two different ways — those are issues. Minor wording improvements,
-    stylistic preferences, and "sections less detailed than others" are not.
-
-    Approve unless there are serious gaps that would lead to a flawed plan.
-
-    ## Output Format
-
-    ## Spec Review
-
-    **Status:** Approved | Issues Found
-
-    **Issues (if any):**
-    - [Section X]: [specific issue] - [why it matters for planning]
-
-    **Recommendations (advisory, do not block approval):**
-    - [suggestions for improvement]
+    Flag only issues that would cause real problems during planning or
+    implementation. Minor wording and stylistic preferences are not findings.
 ```
 
-**Reviewer returns:** Status, Issues (if any), Recommendations
+**Placeholders:**
+- `[SPEC_FILE_PATH]` — the spec document path
+
+**plan-reviewer returns:** severity-classified findings that must be fixed or rebutted before handoff.

@@ -76,6 +76,8 @@ Subagent (general-purpose): "Fix tool-approval-race-conditions.test.ts failures"
 
 Multiple dispatch calls in one response = parallel execution. One per response = sequential.
 
+These use `general-purpose` because parallel tasks are independent investigations or fixes, not brief-driven single-task implementations — the `implementer` contract does not fit.
+
 ### 4. Review and Integrate
 
 When agents return:
