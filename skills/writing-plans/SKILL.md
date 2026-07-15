@@ -15,8 +15,9 @@ Assume they are a skilled developer, but know almost nothing about our toolset o
 
 **Context:** If working in an isolated worktree, it should have been created via the `superpowers:using-git-worktrees` skill at execution time.
 
-**Save plans to:** `docs/superpowers/plans/YYYY-MM-DD-<feature-name>.md`
+**Save plans to:** `docs/superpowers/<feature>/plan.md` — the same `<feature>` directory the design spec lives in
 - (User preferences for plan location override this default)
+- **Never commit.** docs/superpowers artifacts are local working docs, not version control — never `git add` or `git commit` them
 
 ## Scope Check
 
@@ -167,7 +168,7 @@ finding before the execution handoff.
 
 After saving the plan, offer execution choice:
 
-**"Plan complete and saved to `docs/superpowers/plans/<filename>.md`. Two execution options:**
+**"Plan complete and saved to `docs/superpowers/<feature>/plan.md`. Two execution options:**
 
 **1. Subagent-Driven (recommended)** - I dispatch a fresh subagent per task, review between tasks, fast iteration
 
