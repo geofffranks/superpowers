@@ -49,6 +49,10 @@ skills_dir="$config_dir/skills"
 hooks_file="$config_dir/hooks.json"
 runtime_dir="$config_dir/superpowers"
 hook_script="$runtime_dir/session-start-polytoken"
+# $HOME-relative so the hook resolves on host AND in containers.
+if [[ "$config_dir" == "$HOME"/* ]]; then
+  hook_script="\$HOME/${config_dir#"$HOME"/}/superpowers/session-start-polytoken"
+fi
 source_hook_script="$REPO_ROOT/hooks/session-start-polytoken"
 ownership_marker=".superpowers-polytoken-poc"
 
@@ -94,17 +98,16 @@ else:
 
 hooks = [entry for entry in hooks if not (isinstance(entry, dict) and entry.get("name") in names)]
 if mode == "install":
-    quoted_script = shlex.quote(hook_script)
     hooks.extend([
         {
             "name": "superpowers-session-start",
             "event": "session_start",
-            "handler": {"bash": f"exec bash {quoted_script}"},
+            "handler": {"bash": f'exec bash "{hook_script}"'},
         },
         {
             "name": "superpowers-post-compaction",
             "event": "post_compaction",
-            "handler": {"bash": f"exec bash {quoted_script}"},
+            "handler": {"bash": f'exec bash "{hook_script}"'},
         },
     ])
 
