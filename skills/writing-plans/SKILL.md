@@ -15,6 +15,19 @@ Assume they are a skilled developer, but know almost nothing about our toolset o
 
 **Context:** If working in an isolated worktree, it should have been created via the `superpowers:using-git-worktrees` skill at execution time.
 
+## Plan-Writer Handoff
+
+Before drafting or editing any plan, dispatch the runtime `plan-writer` persona with the reviewed spec path and the required output path. Request model override `codex/gpt-5.6-luna(medium)` for this dispatch.
+
+The `plan-writer` owns both evidence gathering and first-draft authorship. It must:
+
+1. Read the complete spec and extract every requirement, constraint, and acceptance criterion.
+2. Investigate the repository locally to verify exact file paths, existing patterns, interfaces, tests, and commands; report facts with paths and line references in its working notes or handoff.
+3. Write the complete plan to `docs/superpowers/<feature>/plan.md` (or the user-approved destination), using the spec as the source of truth and the repository evidence to make every task actionable.
+4. Return the plan path, evidence gathered, assumptions, and any blocked or missing inputs.
+
+The primary agent reviews the draft, performs the self-review below, and dispatches `plan-reviewer`; it does not author a competing inline plan or substitute a generic `researcher` for `plan-writer`. If `plan-writer` cannot run, lacks the reviewed spec, or cannot write the requested plan, stop with `BLOCKED`, report the exact missing input or failure, and ask the human partner how to proceed. Do not silently fall back to inline authorship.
+
 **Save plans to:** `docs/superpowers/<feature>/plan.md` — the same `<feature>` directory the design spec lives in
 - (User preferences for plan location override this default)
 - **Never commit.** docs/superpowers artifacts are local working docs, not version control — never `git add` or `git commit` them
