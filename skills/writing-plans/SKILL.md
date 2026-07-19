@@ -17,16 +17,18 @@ Assume they are a skilled developer, but know almost nothing about our toolset o
 
 ## Plan-Writer Handoff
 
-Before drafting or editing any plan, dispatch the runtime `plan-writer` persona with the reviewed spec path and the required output path. Request model override `codex/gpt-5.6-luna(medium)` for this dispatch.
+This handoff is owned by the primary agent. Before drafting or editing any plan, the primary agent dispatches the runtime `plan-writer` persona with the reviewed spec path and the required output path. A `plan-writer` running this skill does not dispatch another `plan-writer` or any other subagent.
 
-The `plan-writer` owns both evidence gathering and first-draft authorship. It must:
+The `plan-writer` owns both normal repository investigation and first-draft authorship. It must:
 
 1. Read the complete spec and extract every requirement, constraint, and acceptance criterion.
 2. Investigate the repository locally to verify exact file paths, existing patterns, interfaces, tests, and commands; report facts with paths and line references in its working notes or handoff.
 3. Write the complete plan to `docs/superpowers/<feature>/plan.md` (or the user-approved destination), using the spec as the source of truth and the repository evidence to make every task actionable.
 4. Return the plan path, evidence gathered, assumptions, and any blocked or missing inputs.
 
-The primary agent reviews the draft, performs the self-review below, and dispatches `plan-reviewer`; it does not author a competing inline plan or substitute a generic `researcher` for `plan-writer`. If `plan-writer` cannot run, lacks the reviewed spec, or cannot write the requested plan, stop with `BLOCKED`, report the exact missing input or failure, and ask the human partner how to proceed. Do not silently fall back to inline authorship.
+A separate `researcher` is not part of normal plan creation. The primary agent may dispatch one before `plan-writer` only for a bounded prerequisite question that requires capabilities unavailable to `plan-writer`, such as current external research. Resolve that question or provide its evidence artifact to `plan-writer` before plan drafting begins.
+
+After `plan-writer` returns, the primary agent reviews the draft, performs the self-review below, and dispatches `plan-reviewer`; it does not author a competing inline plan or substitute a generic `researcher` for `plan-writer`. If `plan-writer` cannot run, lacks the reviewed spec, or cannot write the requested plan, stop with `BLOCKED`, report the exact missing input or failure, and ask the human partner how to proceed. Do not silently fall back to inline authorship.
 
 **Save plans to:** `docs/superpowers/<feature>/plan.md` — the same `<feature>` directory the design spec lives in
 - (User preferences for plan location override this default)
@@ -38,9 +40,7 @@ If the spec covers multiple independent subsystems, it should have been broken i
 
 ## File Structure
 
-Before defining tasks, map out which files will be created or modified and what each one is responsible for. This is where decomposition decisions get locked in.
-
-**When the codebase investigation is substantial** (large codebase, unfamiliar domain, many files to cross-reference), delegate to the `researcher` subagent instead of exploring inline. Give it the research question, whether to look locally or externally, and your success criterion. For a quick check of a few files, explore inline.
+Before defining tasks, map out which files will be created or modified and what each one is responsible for. This is where decomposition decisions get locked in. This mapping is part of the `plan-writer`'s normal repository investigation, not a separate `researcher` handoff.
 
 - Design units with clear boundaries and well-defined interfaces. Each file should have one clear responsibility.
 - You reason best about code you can hold in context at once, and your edits are more reliable when files are focused. Prefer smaller, focused files over large ones that do too much.
@@ -157,9 +157,9 @@ Every step must contain the actual content an engineer needs. These are **plan f
 - Exact commands with expected output
 - DRY, YAGNI, TDD, frequent commits
 
-## Self-Review
+## Primary-Agent Self-Review
 
-After writing the complete plan, look at the spec with fresh eyes and check the plan against it. This is a checklist you run yourself as a first pass — then dispatch the `plan-reviewer` subagent for a thorough second pass (see below).
+After `plan-writer` returns the complete plan, the primary agent looks at the spec with fresh eyes and checks the plan against it. This is the primary agent's quick acceptance pass—not part of `plan-writer` authorship—before it dispatches the independent `plan-reviewer` for a thorough second pass.
 
 **1. Spec coverage:** Skim each section/requirement in the spec. Can you point to a task that implements it? List any gaps.
 
