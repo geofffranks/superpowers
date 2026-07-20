@@ -29,9 +29,16 @@ BASE_SHA=$(git rev-parse HEAD~1)  # or origin/main
 HEAD_SHA=$(git rev-parse HEAD)
 ```
 
-**2. Dispatch code reviewer subagent:**
+**2. Dispatch the code reviewer:**
 
-Dispatch a `reviewer` subagent, filling the template at [code-reviewer.md](code-reviewer.md)
+**Prefer clod-subagent:** call `mcp__clod-subagent__subagent` with
+`model: "claude-opus-4-8"`, `system_prompt` = the body of
+`~/.config/polytoken/subagents/reviewer.md` (drop the YAML frontmatter and the
+trailing `Prompt:` / `{{ prompt }}` lines), and `prompt` = the filled
+[code-reviewer.md](code-reviewer.md) recipe, ending with a request to return the
+review as text sections: **SPEC** verdict, **QUALITY** verdict, and
+severity-tagged **FINDINGS**. If `clod-subagent` is not connected, fall back to
+dispatching the harness `reviewer` subagent with the same filled template.
 
 **Placeholders:**
 - `{DESCRIPTION}` - Brief summary of what you built

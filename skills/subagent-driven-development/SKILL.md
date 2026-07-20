@@ -5,11 +5,13 @@ description: Use when executing implementation plans with independent tasks in t
 
 # Subagent-Driven Development
 
-Execute plan by dispatching a fresh implementer subagent per task, a task review (spec compliance + code quality) after each, and a broad whole-branch review at the end.
+Execute the task checklist by dispatching a fresh implementer subagent per task, reviewing each task's diff **inline yourself** (spec compliance + code quality), and dispatching a broad whole-branch review at the end.
+
+**Dispatch via clod-subagent (preferred), harness fallback:** implementer and the final code-reviewer run through the `clod-subagent` MCP tool — a detached `claude -p` with a chosen model and a system prompt. Call `mcp__clod-subagent__subagent` with the role's `model` and `system_prompt` = the body of `~/.config/polytoken/subagents/<role>.md` (drop the YAML frontmatter and the trailing `Prompt:` / `{{ prompt }}` lines), and `prompt` = the filled dispatch recipe, which must ask for the report as labeled **text sections** (clod returns plain text, so the Polytoken exit-tool schema is replaced by text you parse). If `clod-subagent` is not connected, fall back to dispatching the harness subagent with the same recipe. Roles: **implementer → `claude-sonnet-5`** (`implementer.md`); **final code-reviewer → `claude-opus-4-8`** (`reviewer.md`).
 
 **Why subagents:** You delegate tasks to specialized agents with isolated context. By precisely crafting their instructions and context, you ensure they stay focused and succeed at their task. They should never inherit your session's context or history — you construct exactly what they need. This also preserves your own context for coordination work.
 
-**Core principle:** Fresh subagent per task + task review (spec + quality) + broad final review = high quality, fast iteration
+**Core principle:** Fresh subagent per task + inline task review (spec + quality) + broad final review = high quality, fast iteration
 
 **Narration:** between tool calls, narrate at most one short line — the
 ledger and the tool results carry the record.
@@ -50,35 +52,35 @@ digraph process {
 
     subgraph cluster_per_task {
         label="Per Task";
-        "Dispatch implementer subagent (implementer type, ./implementer-prompt.md)" [shape=box];
-        "Implementer subagent asks questions?" [shape=diamond];
+        "Dispatch implementer via clod (sonnet-5, implementer.md) / harness fallback" [shape=box];
+        "Implementer asks questions?" [shape=diamond];
         "Answer questions, provide context" [shape=box];
-        "Implementer subagent implements, tests, commits, self-reviews" [shape=box];
-        "Write diff file, dispatch reviewer subagent (reviewer type, ./task-reviewer-prompt.md)" [shape=box];
-        "Task reviewer reports spec ✅ and quality approved?" [shape=diamond];
-        "Dispatch fix subagent (implementer type) for Critical/Important findings" [shape=box];
+        "Implementer implements, tests, commits, self-reviews" [shape=box];
+        "Generate diff file, review it INLINE (task-review rubric)" [shape=box];
+        "Spec ✅ and quality approved?" [shape=diamond];
+        "Dispatch fix implementer via clod for Critical/Important findings" [shape=box];
         "Mark task complete in todo list and progress ledger" [shape=box];
     }
 
-    "Read plan, note context and global constraints, create todos" [shape=box];
+    "Read checklist, note context and global constraints, create todos" [shape=box];
     "More tasks remain?" [shape=diamond];
-    "Dispatch reviewer subagent (reviewer type, ../requesting-code-review/code-reviewer.md)" [shape=box];
+    "Dispatch final code-reviewer via clod (opus, reviewer.md) / harness fallback" [shape=box];
     "Use superpowers:finishing-a-development-branch" [shape=box style=filled fillcolor=lightgreen];
 
-    "Read plan, note context and global constraints, create todos" -> "Dispatch implementer subagent (implementer type, ./implementer-prompt.md)";
-    "Dispatch implementer subagent (implementer type, ./implementer-prompt.md)" -> "Implementer subagent asks questions?";
-    "Implementer subagent asks questions?" -> "Answer questions, provide context" [label="yes"];
-    "Answer questions, provide context" -> "Dispatch implementer subagent (implementer type, ./implementer-prompt.md)";
-    "Implementer subagent asks questions?" -> "Implementer subagent implements, tests, commits, self-reviews" [label="no"];
-    "Implementer subagent implements, tests, commits, self-reviews" -> "Write diff file, dispatch reviewer subagent (reviewer type, ./task-reviewer-prompt.md)";
-    "Write diff file, dispatch reviewer subagent (reviewer type, ./task-reviewer-prompt.md)" -> "Task reviewer reports spec ✅ and quality approved?";
-    "Task reviewer reports spec ✅ and quality approved?" -> "Dispatch fix subagent (implementer type) for Critical/Important findings" [label="no"];
-    "Dispatch fix subagent (implementer type) for Critical/Important findings" -> "Write diff file, dispatch reviewer subagent (reviewer type, ./task-reviewer-prompt.md)" [label="re-review"];
-    "Task reviewer reports spec ✅ and quality approved?" -> "Mark task complete in todo list and progress ledger" [label="yes"];
+    "Read checklist, note context and global constraints, create todos" -> "Dispatch implementer via clod (sonnet-5, implementer.md) / harness fallback";
+    "Dispatch implementer via clod (sonnet-5, implementer.md) / harness fallback" -> "Implementer asks questions?";
+    "Implementer asks questions?" -> "Answer questions, provide context" [label="yes"];
+    "Answer questions, provide context" -> "Dispatch implementer via clod (sonnet-5, implementer.md) / harness fallback";
+    "Implementer asks questions?" -> "Implementer implements, tests, commits, self-reviews" [label="no"];
+    "Implementer implements, tests, commits, self-reviews" -> "Generate diff file, review it INLINE (task-review rubric)";
+    "Generate diff file, review it INLINE (task-review rubric)" -> "Spec ✅ and quality approved?";
+    "Spec ✅ and quality approved?" -> "Dispatch fix implementer via clod for Critical/Important findings" [label="no"];
+    "Dispatch fix implementer via clod for Critical/Important findings" -> "Generate diff file, review it INLINE (task-review rubric)" [label="re-review"];
+    "Spec ✅ and quality approved?" -> "Mark task complete in todo list and progress ledger" [label="yes"];
     "Mark task complete in todo list and progress ledger" -> "More tasks remain?";
-    "More tasks remain?" -> "Dispatch implementer subagent (implementer type, ./implementer-prompt.md)" [label="yes"];
-    "More tasks remain?" -> "Dispatch reviewer subagent (reviewer type, ../requesting-code-review/code-reviewer.md)" [label="no"];
-    "Dispatch reviewer subagent (reviewer type, ../requesting-code-review/code-reviewer.md)" -> "Use superpowers:finishing-a-development-branch";
+    "More tasks remain?" -> "Dispatch implementer via clod (sonnet-5, implementer.md) / harness fallback" [label="yes"];
+    "More tasks remain?" -> "Dispatch final code-reviewer via clod (opus, reviewer.md) / harness fallback" [label="no"];
+    "Dispatch final code-reviewer via clod (opus, reviewer.md) / harness fallback" -> "Use superpowers:finishing-a-development-branch";
 }
 ```
 
@@ -98,43 +100,27 @@ conflicts that only emerge from implementation.
 
 ## Model Selection
 
-The subagent definitions set sensible default models: `implementer` uses
-`default_model:mini`, `reviewer` uses `default_model:full`. Polytoken uses
-the definition's model unless you pass `model_override`. Override by
-exception, not by default.
+Models are fixed by role in the clod dispatch: the **implementer** (and fix
+implementers) run on `claude-sonnet-5`; the **final whole-branch code-reviewer**
+runs on `claude-opus-4-8`. Per-task review is done inline by you — no model to
+pick. Pass these as the clod `model` argument.
 
-**Mechanical implementation tasks** (isolated functions, clear specs, 1-2
-files): the `implementer` default (`mini`) is already right.
-
-**Integration and judgment tasks** (multi-file coordination, pattern
-matching, debugging): override `implementer` to a standard model.
-
-**Architecture and design tasks**: override to the most capable available
-model. The final whole-branch review is one of these — override `reviewer`
-to the most capable model, not the default.
-
-**Review tasks**: choose the model with the same judgment, scaled to the
-diff's size, complexity, and risk. A small mechanical diff does not need
-the most capable model; a subtle concurrency change does.
-
-**Turn count beats token price.** Wall-clock and context cost scale with how
-many turns a subagent takes, and the cheapest models routinely take 2-3× the
-turns on multi-step work — costing more overall. Use a mid-tier model as the
-floor for implementers working from prose descriptions. When the task's plan
-text contains the complete code to write, the implementation is transcription
-plus testing: the `mini` default is fine. Single-file mechanical fixes also
-take the `mini` default.
+**Harness fallback:** when `clod-subagent` is not connected, the harness
+subagents use their Polytoken definition defaults (`implementer` →
+`default_model:mini`, `reviewer` → `default_model:full`); override by exception
+only, guided by the signals below.
 
 **Task complexity signals (implementation tasks):**
-- Touches 1-2 files with a complete spec → keep `implementer` default (`mini`)
-- Touches multiple files with integration concerns → override to standard model
-- Requires design judgment or broad codebase understanding → override to most capable model
+- Touches 1-2 files with a complete spec → the sonnet-5 default is fine
+- Touches multiple files with integration concerns, or requires design judgment
+  or broad codebase understanding → consider the harness path with a more capable
+  model, or split the task smaller
 
 ## Handling Implementer Status
 
 Implementer subagents report one of four statuses. Handle each appropriately:
 
-**DONE:** Generate the review package (`scripts/review-package BASE HEAD`, from this skill's directory — it prints the unique file path it wrote; BASE is the commit you recorded before dispatching the implementer — never `HEAD~1`, which silently drops all but the last commit of a multi-commit task), then dispatch the task reviewer with the printed path.
+**DONE:** Generate the review package (`scripts/review-package BASE HEAD`, from this skill's directory — it prints the unique file path it wrote; BASE is the commit you recorded before dispatching the implementer — never `HEAD~1`, which silently drops all but the last commit of a multi-commit task), then review that diff **inline yourself** against the task-review rubric (see "Task Review (inline)").
 
 **DONE_WITH_CONCERNS:** The implementer completed the work but flagged doubts. Read the concerns before proceeding. If the concerns are about correctness or scope, address them before review. If they're observations (e.g., "this file is getting large"), note them and proceed to review.
 
@@ -148,19 +134,23 @@ Implementer subagents report one of four statuses. Handle each appropriately:
 
 **Never** ignore an escalation or force the same model to retry without changes. If the implementer said it's stuck, something needs to change.
 
-## Handling Reviewer ⚠️ Items
+## Handling ⚠️ Items During Inline Review
 
-The task reviewer may report "⚠️ Cannot verify from diff" items — requirements
-that live in unchanged code or span tasks. These do not block the rest of the
-review, but you must resolve each one yourself before marking the task
-complete: you hold the plan and cross-task context the reviewer
-lacks. If you confirm an item is a real gap, treat it as a failed spec
-review — send it back to the implementer and re-review.
+While reviewing a task's diff inline, you may hit "⚠️ Cannot verify from diff"
+items — requirements that live in unchanged code or span tasks. You already hold
+the checklist and cross-task context, so resolve each one directly before marking
+the task complete. If you confirm an item is a real gap, treat it as a failed spec
+review — send it back to the implementer (dispatch a fix implementer) and
+re-review.
 
-## Constructing Reviewer Prompts
+## Task Review (inline)
 
-Per-task reviews are task-scoped gates. The broad review happens once, at the
-final whole-branch review. When you fill a reviewer template:
+Per-task reviews are task-scoped gates you perform **inline** — you review the
+task's diff yourself against the rubric in
+[task-reviewer-prompt.md](task-reviewer-prompt.md) (spec-compliance verdict +
+quality verdict with severity-classified findings). The broad review happens once,
+at the end, dispatched to the clod code-reviewer. Apply the same discipline
+inline that you would demand of a dispatched reviewer:
 
 - Do not add open-ended directives like "check all uses" or "run race tests
   if useful" without a concrete, task-specific reason
@@ -172,21 +162,20 @@ final whole-branch review. When you fill a reviewer template:
   loop. If the prompt you are writing contains "do not flag," "don't treat X
   as a defect," "at most Minor," or "the plan chose" — stop: you are
   pre-judging, usually to spare yourself a review loop.
-- The global-constraints block you hand the reviewer is its attention
-  lens. Copy the binding requirements verbatim from the plan's Global
-  Constraints section or the spec: exact values, exact formats, and the
-  stated relationships between components ("same layout as X", "matches
-  Y"). The reviewer's template already carries the process rules (YAGNI,
-  test hygiene, review method) — the constraints block is for what THIS
-  project's spec demands.
-- Hand the reviewer its diff as a file: run this skill's
-  `scripts/review-package BASE HEAD` and pass the reviewer the file path
-  it prints (or, without bash: `git log --oneline`, `git diff --stat`,
-  and `git diff -U10` for the range, redirected to one uniquely named
-  file). The output never enters your own context, and the reviewer sees
-  the commit list, stat summary, and full diff with context in one Read
-  call. Use the BASE you recorded before dispatching the implementer —
-  never `HEAD~1`, which silently truncates multi-commit tasks.
+- The global-constraints block is your attention lens when reviewing inline
+  (and the block you hand the final clod reviewer). Copy the binding
+  requirements verbatim from the design doc's Global Constraints / the spec:
+  exact values, exact formats, and the stated relationships between components
+  ("same layout as X", "matches Y"). The task-reviewer rubric already carries
+  the process rules (YAGNI, test hygiene, review method) — the constraints block
+  is for what THIS project's spec demands.
+- Get the diff as a file: run this skill's `scripts/review-package BASE HEAD`
+  (or, without bash: `git log --oneline`, `git diff --stat`, and
+  `git diff -U10` for the range, redirected to one uniquely named file). Read
+  it for the inline review — or pass its path to the final clod reviewer. The
+  package gives the commit list, stat summary, and full diff with context in one
+  Read. Use the BASE you recorded before dispatching the implementer — never
+  `HEAD~1`, which silently truncates multi-commit tasks.
 - A dispatch prompt describes one task, not the session's history. Do not
   paste accumulated prior-task summaries ("state after Tasks 1-3") into
   later dispatches — a real session's dispatch hit 42k chars of which 99%
@@ -238,9 +227,10 @@ and is re-read on every later turn. Hand artifacts over as files:
   (brief `…/task-N-brief.md` → report `…/task-N-report.md`) and put it in
   the dispatch prompt. The implementer writes the full report there and
   returns only status, commits, a one-line test summary, and concerns.
-- **Reviewer inputs:** the task reviewer gets three paths — the same brief
-  file, the report file, and the review package — plus the global
-  constraints that bind the task.
+- **Task-review inputs (inline):** to review a task, you read three files —
+  the same brief file, the report file, and the review package — against the
+  global constraints that bind the task. (The final whole-branch review is the
+  one that gets these handed to it as a dispatched clod reviewer.)
 - Fix dispatches append their fix report (with test results) to the same
   report file and return a short summary; re-reviews read the updated file.
 
@@ -266,16 +256,16 @@ a ledger file, not only in todos.
 
 ## Prompt Templates
 
-- [implementer-prompt.md](implementer-prompt.md) - Dispatch recipe for the `implementer` subagent type
-- [task-reviewer-prompt.md](task-reviewer-prompt.md) - Dispatch recipe for the `reviewer` subagent type
-- Final whole-branch review: use superpowers:requesting-code-review's [code-reviewer.md](../requesting-code-review/code-reviewer.md) — dispatch recipe for the `reviewer` subagent type
+- [implementer-prompt.md](implementer-prompt.md) - Dispatch recipe for the implementer (clod `system_prompt` = `implementer.md`, sonnet-5; or harness `implementer` type)
+- [task-reviewer-prompt.md](task-reviewer-prompt.md) - The rubric you apply **inline** for each task's review (not dispatched)
+- Final whole-branch review: use superpowers:requesting-code-review's [code-reviewer.md](../requesting-code-review/code-reviewer.md) - Dispatch recipe for the final clod code-reviewer (`reviewer.md`, opus; or harness `reviewer` type)
 
 ## Example Workflow
 
 ```
-You: I'm using Subagent-Driven Development to execute this plan.
+You: I'm using Subagent-Driven Development to execute this task checklist.
 
-[Read plan file once: docs/superpowers/<feature>/plan.md]
+[Read the design doc's ## Implementation Tasks once: docs/superpowers/<tkid>-<slug>/design_spec.md]
 [Create todos for all tasks]
 
 Task 1: Hook installation script
@@ -293,8 +283,8 @@ Implementer: "Got it. Implementing now..."
   - Self-review: Found I missed --force flag, added it
   - Committed
 
-[Run review-package, dispatch task reviewer with the printed path]
-Task reviewer: Spec ✅ - all requirements met, nothing extra.
+[Run review-package, review the diff INLINE against the task-review rubric]
+Inline review: Spec ✅ - all requirements met, nothing extra.
   Strengths: Good test coverage, clean. Issues: None. Task quality: Approved.
 
 [Mark Task 1 complete]
@@ -310,24 +300,24 @@ Implementer:
   - Self-review: All good
   - Committed
 
-[Run review-package, dispatch task reviewer with the printed path]
-Task reviewer: Spec ❌:
+[Run review-package, review the diff INLINE against the task-review rubric]
+Inline review: Spec ❌:
   - Missing: Progress reporting (spec says "report every 100 items")
   - Extra: Added --json flag (not requested)
   Issues (Important): Magic number (100)
 
-[Dispatch fix subagent with all findings]
+[Dispatch fix implementer via clod with all findings]
 Fixer: Removed --json flag, added progress reporting, extracted PROGRESS_INTERVAL constant
 
-[Task reviewer reviews again]
-Task reviewer: Spec ✅. Task quality: Approved.
+[Review the updated diff INLINE again]
+Inline review: Spec ✅. Task quality: Approved.
 
 [Mark Task 2 complete]
 
 ...
 
 [After all tasks]
-[Dispatch final code-reviewer]
+[Dispatch final code-reviewer via clod (opus, reviewer.md) / harness fallback]
 Final reviewer: All requirements met, ready to merge
 
 Done!
@@ -382,9 +372,9 @@ Done!
 - Tell a reviewer what not to flag, or pre-rate a finding's severity in the
   dispatch prompt ("treat it as Minor at most") — the plan's example code is
   a starting point, not evidence that its weaknesses were chosen
-- Dispatch a task reviewer without a diff file — generate it first
-  (`scripts/review-package BASE HEAD`) and name the printed path in the
-  prompt
+- Review a task without generating the diff file first
+  (`scripts/review-package BASE HEAD`) — read the package, don't eyeball
+  `git diff` from memory
 - Move to next task while the review has open Critical/Important issues
 - Re-dispatch a task the progress ledger already marks complete — check
   the ledger (and `git log`) after any compaction or resume
@@ -408,8 +398,8 @@ Done!
 
 **Required workflow skills:**
 - **superpowers:using-git-worktrees** - Ensures isolated workspace (creates one or verifies existing)
-- **superpowers:writing-plans** - Creates the plan this skill executes
-- **superpowers:requesting-code-review** - Code review template for the final whole-branch review
+- **superpowers:brainstorming** - Produces the design doc whose `## Implementation Tasks` checklist this skill executes
+- **superpowers:requesting-code-review** - Code review template for the final whole-branch review (dispatched to the clod code-reviewer)
 - **superpowers:finishing-a-development-branch** - Complete development after all tasks
 
 **Subagents should use:**

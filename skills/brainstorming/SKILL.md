@@ -41,9 +41,8 @@ You MUST create a task for each of these items and complete them in order:
 5. **Present design** — in sections scaled to their complexity, get user approval after each section
 6. **Write design doc + task checklist** — save to `docs/superpowers/<tkid>-<slug>/design_spec.md` (never commit — see "After the Design"); append the `## Implementation Tasks` checklist so the design doc *is* the plan
 7. **Spec self-review** — quick inline check for placeholders, contradictions, ambiguity, scope (see below)
-8. **Dispatch plan-reviewer** — dispatch the `plan-reviewer` subagent (template: [spec-document-reviewer-prompt.md](spec-document-reviewer-prompt.md)) with the doc path, reviewing the design *and* its task checklist; address every severity-classified finding before proceeding
-9. **User reviews written doc** — ask the user to review the design doc + task checklist before proceeding
-10. **Choose execution path** — offer the end-fork: Lightweight (implement in-session off the checklist) or Full plan (invoke writing-plans). See "End Fork" below
+8. **User reviews written doc** — ask the user to review the design doc + task checklist before proceeding
+9. **Implement in-session** — execute the `## Implementation Tasks` checklist, invoking test-driven-development per task. This is the only path (see "After the Design")
 
 ## Process Flow
 
@@ -57,9 +56,7 @@ digraph brainstorming {
     "Write design doc\n+ task checklist" [shape=box];
     "Spec self-review\n(fix inline)" [shape=box];
     "User reviews doc?" [shape=diamond];
-    "Execution path?" [shape=diamond];
-    "Implement in-session\n(lightweight)" [shape=doublecircle];
-    "Invoke writing-plans\n(full plan)" [shape=doublecircle];
+    "Implement in-session\noff the checklist" [shape=doublecircle];
 
     "Explore project context" -> "Ask clarifying questions";
     "Ask clarifying questions" -> "Propose 2-3 approaches";
@@ -68,22 +65,20 @@ digraph brainstorming {
     "User approves design?" -> "Present design sections" [label="no, revise"];
     "User approves design?" -> "Write design doc\n+ task checklist" [label="yes"];
     "Write design doc\n+ task checklist" -> "Spec self-review\n(fix inline)";
-    "Spec self-review\n(fix inline)" -> "Dispatch plan-reviewer\n(address findings)";
-    "Dispatch plan-reviewer\n(address findings)" -> "User reviews doc?";
+    "Spec self-review\n(fix inline)" -> "User reviews doc?";
     "User reviews doc?" -> "Write design doc\n+ task checklist" [label="changes requested"];
-    "User reviews doc?" -> "Execution path?" [label="approved"];
-    "Execution path?" -> "Implement in-session\n(lightweight)" [label="default"];
-    "Execution path?" -> "Invoke writing-plans\n(full plan)" [label="big / parallel / separate session"];
+    "User reviews doc?" -> "Implement in-session\noff the checklist" [label="approved"];
 }
 ```
 
-**The terminal state is the execution fork.** Do NOT invoke frontend-design, mcp-builder, or any other implementation skill directly from brainstorming. The lightweight path implements in-session (invoking test-driven-development per task); the full-plan path hands off to writing-plans. Those are the only two exits.
+**The terminal state is implementing in-session off the task checklist.** Do NOT invoke frontend-design, mcp-builder, or any other implementation skill directly from brainstorming. Execute the design doc's `## Implementation Tasks` in the current session, invoking test-driven-development per task.
 
 ## The Process
 
 **Understanding the idea:**
 
-- Check out the current project state first (files, docs, recent commits). **When the investigation is substantial** (large codebase, unfamiliar domain, many files to cross-reference), delegate to the `researcher` subagent instead of exploring inline — give it the research question, whether to look locally or externally, and your success criterion. This keeps your context clean for the design dialogue. For a quick check of a few files, explore inline.
+- Check out the current project state first (files, docs, recent commits). **When the investigation is substantial** (large codebase, unfamiliar domain, many files to cross-reference), delegate the research instead of exploring inline — give it the research question, whether to look locally or externally, and your success criterion. This keeps your context clean for the design dialogue. For a quick check of a few files, explore inline.
+  - **Prefer clod-subagent:** call `mcp__clod-subagent__subagent` with `model: "claude-haiku-4-5-20251001"`, `system_prompt` = the body of `~/.config/polytoken/subagents/researcher.md` (drop the YAML frontmatter and the trailing `Prompt:` / `{{ prompt }}` lines), and `prompt` = the research question, ending with: *"Return your findings as text sections: SUMMARY, FILES (repo paths examined), SOURCES (external refs)."* If `clod-subagent` is not connected, fall back to dispatching the harness `researcher` subagent.
 - Before asking detailed questions, assess scope: if the request describes multiple independent subsystems (e.g., "build a platform with chat, file storage, billing, and analytics"), flag this immediately. Don't spend questions refining details of a project that needs to be decomposed first.
 - If the project is too large for a single spec, help the user decompose into sub-projects: what are the independent pieces, how do they relate, what order should they be built? Then brainstorm the first sub-project through the normal design flow. Each sub-project gets its own spec → plan → implementation cycle.
 - For appropriately-scoped projects, ask questions one at a time to refine the idea
@@ -125,11 +120,11 @@ digraph brainstorming {
 - Write the validated design (spec) to `docs/superpowers/<tkid>-<slug>/design_spec.md` (`<tkid>` = the ticket id, `<slug>` = a short kebab-case topic slug). See `herdle-tk-artifacts` for the naming and lifecycle convention.
   - (User preferences for spec location override this default)
 - Use elements-of-style:writing-clearly-and-concisely skill if available
-- **Never commit.** docs/superpowers artifacts are local working docs, not version control — never `git add` or `git commit` them. Any full plan (from writing-plans) goes in this same `<tkid>-<slug>` directory, next to this doc.
+- **Never commit.** docs/superpowers artifacts are local working docs, not version control — never `git add` or `git commit` them.
 
 **Implementation Tasks (append to the design doc):**
 
-The design doc ends with an `## Implementation Tasks` checklist — this is what makes the doc *the plan*, so a separate writing-plans pass isn't needed for the common case. Write the tasks **TDD-lite**: each task carries a title, the files it touches, what its test asserts (intent, not the code), and a one-line "done when". The implementing agent writes the real test and code live via `superpowers:test-driven-development` — do not spell out full code blocks or exact commands here.
+The design doc ends with an `## Implementation Tasks` checklist — this is what makes the doc *the plan*. There is no separate plan step: you implement straight off this checklist. Write the tasks **TDD-lite**: each task carries a title, the files it touches, what its test asserts (intent, not the code), and a one-line "done when". The implementing agent writes the real test and code live via `superpowers:test-driven-development` — do not spell out full code blocks or exact commands here.
 
 Wrap the work in the fixed **Setup** (first) and **Code Review** + **Finalize** (last two) tasks per `herdle-tk-artifacts`. Follow that skill for the exact task contents and lifecycle stamping — don't restate them here.
 
@@ -143,32 +138,21 @@ After writing the spec document, look at it with fresh eyes:
 
 Fix any issues inline. No need to re-review — just fix and move on.
 
-**Plan-reviewer dispatch:** After the inline self-review, dispatch the
-`plan-reviewer` subagent with the spec path (template:
-spec-document-reviewer-prompt.md). The inline check is a quick first pass; the
-plan-reviewer is the thorough second pass. Address every severity-classified
-finding before asking the user to review.
-
 **User Review Gate:**
-After the review loop passes, ask the user to review the written doc before proceeding:
+After the self-review, ask the user to review the written doc before proceeding:
 
 > "Design doc + task checklist written to `<path>`. Please review it and let me know if you want to make any changes before we implement."
 
-Wait for the user's response. If they request changes, make them and re-run the review loop. Only proceed once the user approves.
+Wait for the user's response. If they request changes, make them and re-run the self-review. Only proceed once the user approves.
 
-**End Fork:**
+**Implementation:**
 
-Once the user approves the doc, offer the two execution paths and let them choose:
-
-> "Doc approved. Two ways to run it:
-> **1. Lightweight (recommended)** — I implement in-session, task by task, straight off the checklist (TDD per task), then the baked Code Review and Finalize tasks close it out. No separate plan.
-> **2. Full plan** — I hand off to writing-plans for a fully-specified `plan.md`, then subagent-driven-development. Better for a large feature, subagent-parallel execution, or handoff to a separate session.
-> Which one?"
-
-- **Lightweight** — implement in the current session. Invoke `superpowers:test-driven-development` per task; run the baked tasks (Setup → work → Code Review → Finalize) per `herdle-tk-artifacts`. Do NOT invoke writing-plans.
-- **Full plan** — invoke the writing-plans skill. Do NOT invoke any other implementation skill directly.
-
-Default to Lightweight when the user doesn't express a preference; reach for Full plan when the work is large, needs parallel subagents, or will be executed in a separate session.
+Once the user approves the doc, implement it in the current session — task by task,
+straight off the `## Implementation Tasks` checklist, invoking
+`superpowers:test-driven-development` per task. Run the baked tasks
+(Setup → work → Code Review → Finalize) per `herdle-tk-artifacts`. This is the
+only path — there is no separate plan step and no other implementation skill to
+invoke from here.
 
 ## Key Principles
 

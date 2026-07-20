@@ -12,7 +12,7 @@ Use Polytoken's native tools when a Superpowers skill requests an action:
 - Search file contents → `grep`.
 - Run a shell command once → `shell_exec`.
 - Wait for an idempotent readiness condition → `shell_monitor`.
-- Dispatch a subagent → `subagent` with the requested type. Skills name specific types (`implementer`, `reviewer`, `validator`, `plan-reviewer`, `researcher`); use the named type, and fall back to `general-purpose` only when no type is specified.
+- Dispatch a subagent → `subagent` with the requested type. Skills name specific types (`implementer`, `reviewer`, `validator`, `researcher`); use the named type, and fall back to `general-purpose` only when no type is specified. (implementer/researcher/code-reviewer are preferentially routed through the `clod-subagent` MCP tool — see the dispatching skill; this harness `subagent` path is the fallback.)
 - Track dispatched work → `job_status`, `job_block`, `job_result`, or `job_cancel`.
 - Create or update todos → `todo_create`, `todo_update`, and `todo_complete`.
 - Fetch a URL → `web_fetch`.
