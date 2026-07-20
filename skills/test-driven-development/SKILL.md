@@ -49,9 +49,9 @@ Implement fresh from tests. Period.
 ```dot
 digraph tdd_cycle {
     rankdir=LR;
-    red [label="RED\nWrite failing test", shape=box, style=filled, fillcolor="#ffcccc"];
-    verify_red [label="Verify fails\ncorrectly", shape=diamond];
-    green [label="GREEN\nMinimal code", shape=box, style=filled, fillcolor="#ccffcc"];
+    red [label="RED\nWrite failing test(s)\nfor the unit", shape=box, style=filled, fillcolor="#ffcccc"];
+    verify_red [label="Watch batch\nfail correctly", shape=diamond];
+    green [label="GREEN\nMinimal code\nto pass the batch", shape=box, style=filled, fillcolor="#ccffcc"];
     verify_green [label="Verify passes\nAll green", shape=diamond];
     refactor [label="REFACTOR\nClean up", shape=box, style=filled, fillcolor="#ccccff"];
     next [label="Next", shape=ellipse];
@@ -68,9 +68,15 @@ digraph tdd_cycle {
 }
 ```
 
-### RED - Write Failing Test
+### RED - Write Failing Test(s)
 
-Write one minimal test showing what should happen.
+Write the failing test(s) for the next **cohesive unit of behavior**. Batch the
+related tests for that unit into one RED step — write them together, watch them
+fail together (next step), implement them together. Each test still asserts **one**
+behavior (see Good Tests); what you batch is the *cycle*, not the assertion. Fewer,
+larger cycles beat many one-assertion micro-cycles: identical discipline, a
+fraction of the test runs. Don't inflate the batch past one unit — a batch you
+can't hold in your head at once is too big; split it.
 
 <Good>
 ```typescript
@@ -105,31 +111,39 @@ test('retry works', async () => {
 Vague name, tests mock not code
 </Bad>
 
-**Requirements:**
+**Requirements (each test):**
 - One behavior
 - Clear name
 - Real code (no mocks unless unavoidable)
 
 ### Verify RED - Watch It Fail
 
-**MANDATORY. Never skip.**
+**MANDATORY. Never skip.** Batching does not weaken this — you watch the whole
+batch fail, and every test must fail before any production code exists.
+
+Run the **specific** target (this file / these test IDs), not the whole suite, and
+keep the output lean. Route pytest / mypy / go test through `rtk` so verbose
+failures are summarized instead of flooding your context (per your RTK
+conventions):
 
 ```bash
-npm test path/to/test.test.ts
+rtk pytest tests/path/test_x.py::test_a tests/path/test_x.py::test_b   # targeted + summarized
+# go:    rtk go test ./pkg -run 'TestUnitA|TestUnitB'
+# jest:  npm test -- path/to/test.test.ts    (the specific file, not the suite)
 ```
 
-Confirm:
-- Test fails (not errors)
+Confirm **for each test in the batch**:
+- Fails (not errors)
 - Failure message is expected
-- Fails because feature missing (not typos)
+- Fails because the feature is missing (not a typo)
 
-**Test passes?** You're testing existing behavior. Fix test.
+**Any test passes?** It's testing existing behavior. Fix that test.
 
-**Test errors?** Fix error, re-run until it fails correctly.
+**A test errors?** Fix the error, re-run until it fails correctly.
 
 ### GREEN - Minimal Code
 
-Write simplest code to pass the test.
+Write the simplest code to pass the batch — just what those tests demand, nothing more.
 
 <Good>
 ```typescript
@@ -169,16 +183,20 @@ Don't add features, refactor other code, or "improve" beyond the test.
 
 **MANDATORY.**
 
+Run the same targeted batch (via `rtk` for pytest/go/mypy), then the broader suite
+once the batch is green:
+
 ```bash
-npm test path/to/test.test.ts
+rtk pytest tests/path/test_x.py::test_a tests/path/test_x.py::test_b   # the batch
+rtk pytest tests/path/                                                 # neighbors still green
 ```
 
 Confirm:
-- Test passes
+- Every test in the batch passes
 - Other tests still pass
 - Output pristine (no errors, warnings)
 
-**Test fails?** Fix code, not test.
+**A test fails?** Fix the code, not the test.
 
 **Other tests fail?** Fix now.
 
@@ -193,7 +211,7 @@ Keep tests green. Don't add behavior.
 
 ### Repeat
 
-Next failing test for next feature.
+Next batch — the failing tests for the next unit of behavior.
 
 ## Good Tests
 
