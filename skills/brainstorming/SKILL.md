@@ -26,11 +26,11 @@ You MUST create a task for each of these items and complete them in order:
 3. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
 4. **Propose 2-3 approaches** — with trade-offs and your recommendation
 5. **Present design** — in sections scaled to their complexity, get user approval after each section
-6. **Write design doc** — save to `docs/superpowers/<feature>/design_spec.md` (never commit — see "After the Design")
+6. **Write design doc + task checklist** — save to `docs/superpowers/<tkid>-<slug>/design_spec.md` (never commit — see "After the Design"); append the `## Implementation Tasks` checklist so the design doc *is* the plan
 7. **Spec self-review** — quick inline check for placeholders, contradictions, ambiguity, scope (see below)
-8. **Dispatch plan-reviewer** — dispatch the `plan-reviewer` subagent (template: [spec-document-reviewer-prompt.md](spec-document-reviewer-prompt.md)) with the spec path; address every severity-classified finding before proceeding
-9. **User reviews written spec** — ask user to review the spec file before proceeding
-10. **Transition to implementation** — invoke writing-plans skill to create implementation plan
+8. **Dispatch plan-reviewer** — dispatch the `plan-reviewer` subagent (template: [spec-document-reviewer-prompt.md](spec-document-reviewer-prompt.md)) with the doc path, reviewing the design *and* its task checklist; address every severity-classified finding before proceeding
+9. **User reviews written doc** — ask the user to review the design doc + task checklist before proceeding
+10. **Choose execution path** — offer the end-fork: Lightweight (implement in-session off the checklist) or Full plan (invoke writing-plans). See "End Fork" below
 
 ## Process Flow
 
@@ -41,26 +41,30 @@ digraph brainstorming {
     "Propose 2-3 approaches" [shape=box];
     "Present design sections" [shape=box];
     "User approves design?" [shape=diamond];
-    "Write design doc" [shape=box];
+    "Write design doc\n+ task checklist" [shape=box];
     "Spec self-review\n(fix inline)" [shape=box];
-    "User reviews spec?" [shape=diamond];
-    "Invoke writing-plans skill" [shape=doublecircle];
+    "User reviews doc?" [shape=diamond];
+    "Execution path?" [shape=diamond];
+    "Implement in-session\n(lightweight)" [shape=doublecircle];
+    "Invoke writing-plans\n(full plan)" [shape=doublecircle];
 
     "Explore project context" -> "Ask clarifying questions";
     "Ask clarifying questions" -> "Propose 2-3 approaches";
     "Propose 2-3 approaches" -> "Present design sections";
     "Present design sections" -> "User approves design?";
     "User approves design?" -> "Present design sections" [label="no, revise"];
-    "User approves design?" -> "Write design doc" [label="yes"];
-    "Write design doc" -> "Spec self-review\n(fix inline)";
+    "User approves design?" -> "Write design doc\n+ task checklist" [label="yes"];
+    "Write design doc\n+ task checklist" -> "Spec self-review\n(fix inline)";
     "Spec self-review\n(fix inline)" -> "Dispatch plan-reviewer\n(address findings)";
-    "Dispatch plan-reviewer\n(address findings)" -> "User reviews spec?";
-    "User reviews spec?" -> "Write design doc" [label="changes requested"];
-    "User reviews spec?" -> "Invoke writing-plans skill" [label="approved"];
+    "Dispatch plan-reviewer\n(address findings)" -> "User reviews doc?";
+    "User reviews doc?" -> "Write design doc\n+ task checklist" [label="changes requested"];
+    "User reviews doc?" -> "Execution path?" [label="approved"];
+    "Execution path?" -> "Implement in-session\n(lightweight)" [label="default"];
+    "Execution path?" -> "Invoke writing-plans\n(full plan)" [label="big / parallel / separate session"];
 }
 ```
 
-**The terminal state is invoking writing-plans.** Do NOT invoke frontend-design, mcp-builder, or any other implementation skill. The ONLY skill you invoke after brainstorming is writing-plans.
+**The terminal state is the execution fork.** Do NOT invoke frontend-design, mcp-builder, or any other implementation skill directly from brainstorming. The lightweight path implements in-session (invoking test-driven-development per task); the full-plan path hands off to writing-plans. Those are the only two exits.
 
 ## The Process
 
@@ -105,10 +109,16 @@ digraph brainstorming {
 
 **Documentation:**
 
-- Write the validated design (spec) to `docs/superpowers/<feature>/design_spec.md` (`<feature>` = a short kebab-case slug for the feature/topic)
+- Write the validated design (spec) to `docs/superpowers/<tkid>-<slug>/design_spec.md` (`<tkid>` = the ticket id, `<slug>` = a short kebab-case topic slug). See `herdle-tk-artifacts` for the naming and lifecycle convention.
   - (User preferences for spec location override this default)
 - Use elements-of-style:writing-clearly-and-concisely skill if available
-- **Never commit.** docs/superpowers artifacts are local working docs, not version control — never `git add` or `git commit` them. The implementation plan (from writing-plans) goes in this same `<feature>` directory, next to this spec.
+- **Never commit.** docs/superpowers artifacts are local working docs, not version control — never `git add` or `git commit` them. Any full plan (from writing-plans) goes in this same `<tkid>-<slug>` directory, next to this doc.
+
+**Implementation Tasks (append to the design doc):**
+
+The design doc ends with an `## Implementation Tasks` checklist — this is what makes the doc *the plan*, so a separate writing-plans pass isn't needed for the common case. Write the tasks **TDD-lite**: each task carries a title, the files it touches, what its test asserts (intent, not the code), and a one-line "done when". The implementing agent writes the real test and code live via `superpowers:test-driven-development` — do not spell out full code blocks or exact commands here.
+
+Wrap the work in the fixed **Setup** (first) and **Code Review** + **Finalize** (last two) tasks per `herdle-tk-artifacts`. Follow that skill for the exact task contents and lifecycle stamping — don't restate them here.
 
 **Spec Self-Review:**
 After writing the spec document, look at it with fresh eyes:
@@ -127,16 +137,25 @@ plan-reviewer is the thorough second pass. Address every severity-classified
 finding before asking the user to review.
 
 **User Review Gate:**
-After the spec review loop passes, ask the user to review the written spec before proceeding:
+After the review loop passes, ask the user to review the written doc before proceeding:
 
-> "Spec written to `<path>`. Please review it and let me know if you want to make any changes before we start writing out the implementation plan."
+> "Design doc + task checklist written to `<path>`. Please review it and let me know if you want to make any changes before we implement."
 
-Wait for the user's response. If they request changes, make them and re-run the spec review loop. Only proceed once the user approves.
+Wait for the user's response. If they request changes, make them and re-run the review loop. Only proceed once the user approves.
 
-**Implementation:**
+**End Fork:**
 
-- Invoke the writing-plans skill to create a detailed implementation plan
-- Do NOT invoke any other skill. writing-plans is the next step.
+Once the user approves the doc, offer the two execution paths and let them choose:
+
+> "Doc approved. Two ways to run it:
+> **1. Lightweight (recommended)** — I implement in-session, task by task, straight off the checklist (TDD per task), then the baked Code Review and Finalize tasks close it out. No separate plan.
+> **2. Full plan** — I hand off to writing-plans for a fully-specified `plan.md`, then subagent-driven-development. Better for a large feature, subagent-parallel execution, or handoff to a separate session.
+> Which one?"
+
+- **Lightweight** — implement in the current session. Invoke `superpowers:test-driven-development` per task; run the baked tasks (Setup → work → Code Review → Finalize) per `herdle-tk-artifacts`. Do NOT invoke writing-plans.
+- **Full plan** — invoke the writing-plans skill. Do NOT invoke any other implementation skill directly.
+
+Default to Lightweight when the user doesn't express a preference; reach for Full plan when the work is large, needs parallel subagents, or will be executed in a separate session.
 
 ## Key Principles
 

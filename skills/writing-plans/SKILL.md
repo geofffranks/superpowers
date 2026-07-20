@@ -5,6 +5,16 @@ description: Use when you have a spec or requirements for a multi-step task, bef
 
 # Writing Plans
 
+## When this skill applies
+
+This is the **full-plan branch** of the brainstorming end-fork — reach for it when
+the work is large, needs subagent-parallel execution, or will be handed to a
+separate session with no shared context. For the common case, the design doc's own
+`## Implementation Tasks` checklist is the plan and you implement in-session
+(lightweight path) without a separate `plan.md`. Invoke this skill when the
+end-fork selects Full plan, or directly when you already have a spec and want a
+fully-specified plan.
+
 ## Overview
 
 Write comprehensive implementation plans assuming the engineer has zero context for our codebase and questionable taste. Document everything they need to know: which files to touch for each task, code, testing, docs they might need to check, how to test it. Give them the whole plan as bite-sized tasks. DRY. YAGNI. TDD. Frequent commits.
@@ -23,14 +33,14 @@ The `plan-writer` owns both normal repository investigation and first-draft auth
 
 1. Read the complete spec and extract every requirement, constraint, and acceptance criterion.
 2. Investigate the repository locally to verify exact file paths, existing patterns, interfaces, tests, and commands; report facts with paths and line references in its working notes or handoff.
-3. Write the complete plan to `docs/superpowers/<feature>/plan.md` (or the user-approved destination), using the spec as the source of truth and the repository evidence to make every task actionable.
+3. Write the complete plan to `docs/superpowers/<tkid>-<slug>/plan.md` (or the user-approved destination), using the spec as the source of truth and the repository evidence to make every task actionable.
 4. Return the plan path, evidence gathered, assumptions, and any blocked or missing inputs.
 
 A separate `researcher` is not part of normal plan creation. The primary agent may dispatch one before `plan-writer` only for a bounded prerequisite question that requires capabilities unavailable to `plan-writer`, such as current external research. Resolve that question or provide its evidence artifact to `plan-writer` before plan drafting begins.
 
 After `plan-writer` returns, the primary agent reviews the draft, performs the self-review below, and dispatches `plan-reviewer`; it does not author a competing inline plan or substitute a generic `researcher` for `plan-writer`. If `plan-writer` cannot run, lacks the reviewed spec, or cannot write the requested plan, stop with `BLOCKED`, report the exact missing input or failure, and ask the human partner how to proceed. Do not silently fall back to inline authorship.
 
-**Save plans to:** `docs/superpowers/<feature>/plan.md` — the same `<feature>` directory the design spec lives in
+**Save plans to:** `docs/superpowers/<tkid>-<slug>/plan.md` — the same `<tkid>-<slug>` directory the design doc lives in
 - (User preferences for plan location override this default)
 - **Never commit.** docs/superpowers artifacts are local working docs, not version control — never `git add` or `git commit` them
 
@@ -181,7 +191,7 @@ finding before the execution handoff.
 
 After saving the plan, offer execution choice:
 
-**"Plan complete and saved to `docs/superpowers/<feature>/plan.md`. Two execution options:**
+**"Plan complete and saved to `docs/superpowers/<tkid>-<slug>/plan.md`. Two execution options:**
 
 **1. Subagent-Driven (recommended)** - I dispatch a fresh subagent per task, review between tasks, fast iteration
 
