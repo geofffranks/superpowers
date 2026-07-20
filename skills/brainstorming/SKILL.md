@@ -9,13 +9,26 @@ Help turn ideas into fully formed designs and specs through natural collaborativ
 
 Start by understanding the current project context, then ask questions one at a time to refine the idea. Once you understand what you're building, present the design and get user approval.
 
+## When to skip the full workflow
+
+Not every change needs the full dialogue — don't brainstorm every little thing. **Go straight to implementation when ALL of these hold:**
+
+- The change is small and mechanical (a bug fix with a known cause, a config tweak, a rename, a contained edit to existing code).
+- The requirements are already unambiguous — you could write the task list right now without asking a single clarifying question.
+- There are no design decisions or trade-offs; there is one obvious correct approach.
+- The blast radius is contained — no new component, interface, or dependency.
+
+When all four hold, briefly state what you're about to do and do it (still using `superpowers:test-driven-development` for code changes). A one-line fix does not need a design doc.
+
+**If ANY of them is in doubt, run the full workflow.** "This feels simple" is not the test — *genuinely well-defined and small* is. The next section is about exactly that trap.
+
 <HARD-GATE>
-Do NOT invoke any implementation skill, write any code, scaffold any project, or take any implementation action until you have presented a design and the user has approved it. This applies to EVERY project regardless of perceived simplicity.
+For any change that is NOT a genuine skip per "When to skip the full workflow" above: do NOT invoke any implementation skill, write any code, scaffold any project, or take any implementation action until you have presented a design and the user has approved it. Perceived simplicity alone never qualifies for the skip.
 </HARD-GATE>
 
 ## Anti-Pattern: "This Is Too Simple To Need A Design"
 
-Every project goes through this process. A todo list, a single-function utility, a config change — all of them. "Simple" projects are where unexamined assumptions cause the most wasted work. The design can be short (a few sentences for truly simple projects), but you MUST present it and get approval.
+This is the failure mode the skip criteria guard against: assuming simplicity you haven't verified. A change that *feels* trivial but hides an unexamined assumption — a hidden interface, an ambiguous requirement, a "we'll just" — is where the most work gets wasted. If you're reaching for the skip because designing the work is tedious rather than because it's genuinely well-defined, that's the trap. When in doubt, present a short design (a few sentences) and get approval.
 
 ## Checklist
 
