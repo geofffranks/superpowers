@@ -42,7 +42,8 @@ You MUST create a task for each of these items and complete them in order:
 6. **Write design doc + task checklist** — save to `docs/superpowers/<tkid>-<slug>/design_spec.md` (never commit — see "After the Design"); append the `## Implementation Tasks` checklist so the design doc *is* the plan
 7. **Spec self-review** — quick inline check for placeholders, contradictions, ambiguity, scope (see below)
 8. **User reviews written doc** — ask the user to review the design doc + task checklist before proceeding
-9. **Implement in-session** — execute the `## Implementation Tasks` checklist, invoking test-driven-development per task. This is the only path (see "After the Design")
+9. **Choose execution path** — after approval, ask whether to implement inline or delegate the checklist to the subagent workflow
+10. **Execute the chosen path** — follow the selected workflow (see "After the Design")
 
 ## Process Flow
 
@@ -56,7 +57,9 @@ digraph brainstorming {
     "Write design doc\n+ task checklist" [shape=box];
     "Spec self-review\n(fix inline)" [shape=box];
     "User reviews doc?" [shape=diamond];
-    "Implement in-session\noff the checklist" [shape=doublecircle];
+    "Execution Fork:\ninline or subagent workflow?" [shape=diamond];
+    "Implement inline\noff the checklist" [shape=doublecircle];
+    "Delegate checklist to\nsubagent workflow" [shape=doublecircle];
 
     "Explore project context" -> "Ask clarifying questions";
     "Ask clarifying questions" -> "Propose 2-3 approaches";
@@ -67,11 +70,18 @@ digraph brainstorming {
     "Write design doc\n+ task checklist" -> "Spec self-review\n(fix inline)";
     "Spec self-review\n(fix inline)" -> "User reviews doc?";
     "User reviews doc?" -> "Write design doc\n+ task checklist" [label="changes requested"];
-    "User reviews doc?" -> "Implement in-session\noff the checklist" [label="approved"];
+    "User reviews doc?" -> "Execution Fork:\ninline or subagent workflow?" [label="approved"];
+    "Execution Fork:\ninline or subagent workflow?" -> "Implement inline\noff the checklist" [label="inline"];
+    "Execution Fork:\ninline or subagent workflow?" -> "Delegate checklist to\nsubagent workflow" [label="subagent"];
 }
 ```
 
-**The terminal state is implementing in-session off the task checklist.** Do NOT invoke frontend-design, mcp-builder, or any other implementation skill directly from brainstorming. Execute the design doc's `## Implementation Tasks` in the current session, invoking test-driven-development per task.
+**The execution fork is mandatory after the user approves the written document.** Do not infer the choice from phrases such as "start now," "use your judgment," or "don't block on me"; present both paths and ask the user to choose.
+
+- **Lightweight / inline:** implement the design doc's `## Implementation Tasks` in the current session, invoking `superpowers:test-driven-development` per task and running Setup → work → Code Review → Finalize.
+- **Subagent workflow:** use the existing design doc's `## Implementation Tasks` as the plan and invoke `superpowers:subagent-driven-development` for in-session delegated execution, or `superpowers:executing-plans` when the user wants a separate-session handoff. Do not recreate the deleted `writing-plans` step.
+
+Do NOT invoke frontend-design, mcp-builder, or any other implementation skill directly from brainstorming; enter one of the two paths above first.
 
 ## The Process
 
@@ -145,14 +155,16 @@ After the self-review, ask the user to review the written doc before proceeding:
 
 Wait for the user's response. If they request changes, make them and re-run the self-review. Only proceed once the user approves.
 
-**Implementation:**
+**Implementation paths:**
 
-Once the user approves the doc, implement it in the current session — task by task,
-straight off the `## Implementation Tasks` checklist, invoking
-`superpowers:test-driven-development` per task. Run the baked tasks
-(Setup → work → Code Review → Finalize) per `herdle-tk-artifacts`. This is the
-only path — there is no separate plan step and no other implementation skill to
-invoke from here.
+After the user approves the document, present this choice before doing any implementation:
+
+> "The design is approved. Choose how to execute it:
+> **1. Lightweight / inline** — I implement the `## Implementation Tasks` checklist in this session, with TDD per task and the baked Setup → Code Review → Finalize tasks.
+> **2. Subagent workflow** — I use the same checklist as the plan and delegate implementation through `subagent-driven-development` (or use `executing-plans` for a separate-session handoff), with the existing per-task review loop.
+> Which path do you want?"
+
+Do not silently choose a path. A request to "start now," "use your judgment," or "don't block on me" does not answer this execution-model choice; ask the focused fork question. Once the user chooses, follow only that path. The subagent path does not recreate the deleted `writing-plans` step.
 
 ## Key Principles
 

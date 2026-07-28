@@ -17,6 +17,32 @@ CLAUDE_PROMPT_TIMEOUT="${CLAUDE_PROMPT_TIMEOUT:-90}"
 echo "=== Test: subagent-driven-development skill ==="
 echo ""
 
+# Test 0: Brainstorming must preserve the post-approval execution fork.
+# This is a static regression guard for the handoff behavior; it must run before
+# any model-backed checks so a missing fork fails fast and deterministically.
+echo "Test 0: Brainstorming execution fork..."
+BRAINSTORMING_SKILL="$SCRIPT_DIR/../../skills/brainstorming/SKILL.md"
+flowchart_fork_line=$(grep -nF '"Execution Fork:' "$BRAINSTORMING_SKILL" | head -1 | cut -d: -f1 || true)
+flowchart_approved_line=$(grep -nF '"User reviews doc?" -> "Execution Fork:' "$BRAINSTORMING_SKILL" | head -1 | cut -d: -f1 || true)
+flowchart_inline_line=$(grep -nF '"Execution Fork:' "$BRAINSTORMING_SKILL" | grep -F 'Implement inline' | head -1 | cut -d: -f1 || true)
+flowchart_subagent_line=$(grep -nF '"Execution Fork:' "$BRAINSTORMING_SKILL" | grep -F 'Delegate checklist' | head -1 | cut -d: -f1 || true)
+checklist_choice_line=$(grep -nF '9. **Choose execution path**' "$BRAINSTORMING_SKILL" | head -1 | cut -d: -f1 || true)
+checklist_execute_line=$(grep -nF '10. **Execute the chosen path**' "$BRAINSTORMING_SKILL" | head -1 | cut -d: -f1 || true)
+handoff_line=$(grep -nF "present this choice before doing any implementation" "$BRAINSTORMING_SKILL" | head -1 | cut -d: -f1 || true)
+inline_line=$(grep -nF "**1. Lightweight / inline**" "$BRAINSTORMING_SKILL" | head -1 | cut -d: -f1 || true)
+subagent_line=$(grep -nF "**2. Subagent workflow**" "$BRAINSTORMING_SKILL" | head -1 | cut -d: -f1 || true)
+choice_line=$(grep -nF "Which path do you want?" "$BRAINSTORMING_SKILL" | head -1 | cut -d: -f1 || true)
+review_line=$(grep -nF "User Review Gate" "$BRAINSTORMING_SKILL" | head -1 | cut -d: -f1 || true)
+implementation_line=$(grep -nF "**Implementation paths:**" "$BRAINSTORMING_SKILL" | head -1 | cut -d: -f1 || true)
+if [[ -n "$flowchart_fork_line" && -n "$flowchart_approved_line" && -n "$flowchart_inline_line" && -n "$flowchart_subagent_line" && -n "$checklist_choice_line" && -n "$checklist_execute_line" && -n "$handoff_line" && -n "$inline_line" && -n "$subagent_line" && -n "$choice_line" && -n "$review_line" && -n "$implementation_line" && "$checklist_choice_line" -lt "$checklist_execute_line" && "$review_line" -lt "$implementation_line" && "$implementation_line" -lt "$inline_line" && "$inline_line" -lt "$subagent_line" && "$subagent_line" -lt "$choice_line" ]]; then
+    echo "  [PASS] Execution fork is explicit and follows document review"
+else
+    echo "  [FAIL] Brainstorming silently selects an execution path"
+    exit 1
+fi
+
+echo ""
+
 # Test 1: Verify skill can be loaded
 echo "Test 1: Skill loading..."
 
