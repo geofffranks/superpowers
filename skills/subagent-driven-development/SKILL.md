@@ -13,6 +13,8 @@ Execute the task checklist by dispatching a fresh implementer subagent per task,
 
 **Core principle:** Fresh subagent per task + inline task review (spec + quality) + broad final review = high quality, fast iteration
 
+**Workspace safety contract:** Before dispatch, inspect `git status --short --branch` and `git worktree list --porcelain`. Never dispatch an implementation, review, CI, squash, or overlay operation into a named worktree with staged or unstaged changes. If a disposable worktree is required, create a unique `tmp-*` path with a manifest (`path`, `purpose`, `base`, `owner`, `cleanup`) and install an `EXIT/INT/TERM` cleanup trap before doing work. Verify the exact result commit and changed paths before removing it; then assert the exact path is absent. Do not broadly prune unrelated worktrees.
+
 **Narration:** between tool calls, narrate at most one short line — the
 ledger and the tool results carry the record.
 
@@ -211,6 +213,8 @@ inline that you would demand of a dispatched reviewer:
 Everything you paste into a dispatch prompt — and everything a subagent
 prints back — stays resident in your context for the rest of the session
 and is re-read on every later turn. Hand artifacts over as files:
+
+For review packages, task briefs, and CI artifacts, prefer files in the current repo's ignored `.superpowers/` area or a disposable `tmp-*` worktree. Record the artifact path and owner in the progress ledger. If a temporary worktree is used, its cleanup trap remains active through report collection and its removal is verified before the task is marked complete.
 
 - **Task brief:** before dispatching an implementer, run this skill's
   `scripts/task-brief PLAN_FILE N` — it extracts the task's full text to a
