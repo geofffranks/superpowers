@@ -11,6 +11,8 @@ Guide completion of development work by presenting clear options and handling ch
 
 **Core principle:** Verify tests → Detect environment → Present options → Execute choice → Clean up.
 
+**Integration safety rule:** Never merge, overlay, move a branch ref, reset, or clean a dirty target worktree. Named feature worktrees are preserved exactly; disposable integration worktrees are explicitly manifested and cleaned only after result verification.
+
 **Announce at start:** "I'm using the finishing-a-development-branch skill to complete this work."
 
 ## The Process
@@ -96,21 +98,38 @@ Which option?
 
 #### Option 1: Merge Locally
 
+Before merging, record the target worktree fingerprint and inspect all linked worktrees:
+
 ```bash
-# Get main repo root for CWD safety
-MAIN_ROOT=$(git -C "$(git rev-parse --git-common-dir)/.." rev-parse --show-toplevel)
-cd "$MAIN_ROOT"
-
-# Merge first — verify success before removing anything
-git checkout <base-branch>
-git pull
-git merge <feature-branch>
-
-# Verify tests on merged result
-<test command>
-
-# Only after merge succeeds: cleanup worktree (Step 6), then delete branch
+git status --short --branch
+git diff --cached --stat
+git diff --cached --name-only
+git worktree list --porcelain
 ```
+
+If the target worktree has staged or unstaged changes, stop and preserve it. Do not merge there. Use a clean disposable integration worktree with a manifest (`path`, `purpose`, `base`, `owner`, `cleanup`) and a cleanup trap, or ask the human to commit/shelve the dirty work first.
+
+```bash
+set -euo pipefail
+MAIN_ROOT=$(git rev-parse --show-toplevel)
+TMP="$MAIN_ROOT/.worktrees/tmp-merge-<slug>-$$"
+cleanup() {
+  if ! git -C "$MAIN_ROOT" worktree remove --force "$TMP"; then
+    echo "temporary worktree cleanup failed: $TMP" >&2
+    return 1
+  fi
+  if git -C "$MAIN_ROOT" worktree list --porcelain | grep -Fqx "worktree $TMP"; then
+    echo "temporary worktree still registered after cleanup: $TMP" >&2
+    return 1
+  fi
+}
+trap cleanup EXIT INT TERM
+git worktree add --detach "$TMP" <base-branch>
+git -C "$TMP" merge --no-ff <feature-branch> -m "Merge <feature-branch>"
+# Verify exact changed paths, resulting commit, and tests in "$TMP".
+```
+
+Only after the merged result is verified may the named feature worktree be removed according to Step 6 and the branch deleted. Never broadly prune unrelated worktrees.
 
 Then: Cleanup worktree (Step 6), then delete branch:
 
@@ -161,6 +180,8 @@ git branch -D <feature-branch>
 ### Step 6: Cleanup Workspace
 
 **Only runs for Options 1 and 4.** Options 2 and 3 always preserve the worktree.
+
+For disposable worktrees created during Options 1 or 4, cleanup is unconditional and scoped to the exact manifest path. Install the cleanup trap before creation, verify the expected commit is reachable, then remove that path from the repository root. If cleanup fails, report the remaining path; do not silently continue. For named feature worktrees, cleanup requires provenance from `git worktree list --porcelain`, a successful merge/discard decision, and an explicit branch/path match.
 
 ```bash
 GIT_DIR=$(cd "$(git rev-parse --git-dir)" 2>/dev/null && pwd -P)
@@ -225,17 +246,23 @@ git worktree prune  # Self-healing: clean up any stale registrations
 **Never:**
 - Proceed with failing tests
 - Merge without verifying tests on result
+- Merge or overlay into a worktree with staged or unstaged changes
 - Delete work without confirmation
 - Force-push without explicit request
 - Remove a worktree before confirming merge success
 - Clean up worktrees you didn't create (provenance check)
+- Reuse an unowned scratch path
 - Run `git worktree remove` from inside the worktree
+- Treat a successful cleanup command as proof without checking `git worktree list --porcelain`
 
 **Always:**
 - Verify tests before offering options
 - Detect environment before presenting menu
+- Record the target status/index fingerprint and `git worktree list --porcelain` before integration
 - Present exactly 4 options (or 3 for detached HEAD)
 - Get typed confirmation for Option 4
+- Use a manifest and cleanup trap for every disposable worktree
 - Clean up worktree for Options 1 & 4 only
 - `cd` to main repo root before worktree removal
-- Run `git worktree prune` after removal
+- Verify the exact expected result and changed paths before cleanup
+- Run `git worktree prune` after removal, scoped to the operation

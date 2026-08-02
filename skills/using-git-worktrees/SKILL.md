@@ -11,6 +11,8 @@ Ensure work happens in an isolated workspace. Prefer your platform's native work
 
 **Core principle:** Detect existing isolation first. Then use native tools. Then fall back to git. Never fight the harness.
 
+**Worktree ownership rule:** Existing named worktrees are immutable working environments. Do not run `git checkout <other-ref> -- <files>`, patch overlays, branch-ref moves, `reset`, `clean`, or integration merges in them while they contain staged or unstaged changes. Build squashes, overlays, CI checkouts, and review packages only in a newly-created disposable worktree with an explicit owner and cleanup plan.
+
 **Announce at start:** "I'm using the using-git-worktrees skill to set up an isolated workspace."
 
 ## Step 0: Detect Existing Isolation
@@ -37,6 +39,17 @@ Report with branch state:
 - Detached HEAD: "Already in isolated workspace at `<path>` (detached HEAD, externally managed). Branch creation needed at finish time."
 
 **If `GIT_DIR == GIT_COMMON` (or in a submodule):** You are in a normal repo checkout.
+
+Before any branch integration, squash, overlay, or ref movement, record:
+
+```bash
+git status --short --branch
+git diff --cached --stat
+git diff --cached --name-only
+git worktree list --porcelain
+```
+
+If the target worktree has staged or unstaged changes, stop. Preserve them with an explicit, user-approved handoff; do not mutate that worktree. The safe default is to report the dirty state and perform the operation in a clean disposable worktree instead.
 
 Has the user already indicated their worktree preference in your instructions? If not, ask for consent before creating a worktree:
 
@@ -89,13 +102,39 @@ git check-ignore -q .worktrees 2>/dev/null || git check-ignore -q worktrees 2>/d
 
 #### Create the Worktree
 
-```bash
-# Determine path based on chosen location
-path="$LOCATION/$BRANCH_NAME"
+For implementation work, use the branch name and keep the worktree until the branch is merged or abandoned. For one-off operations, use a unique disposable name such as `tmp-squash-<slug>-<pid>` or `tmp-ci-<slug>-<pid>`; never reuse a prior scratch path without checking its registration and owner.
 
-git worktree add "$path" -b "$BRANCH_NAME"
-cd "$path"
+For every disposable worktree, record a manifest before creation:
+
+```text
+path=<absolute path>
+purpose=<squash|CI|review|overlay>
+base=<commit or ref>
+owner=<current agent/session>
+cleanup=<remove after validation or explicit handoff>
 ```
+
+Then create it and install cleanup before doing work:
+
+```bash
+root=$(git rev-parse --show-toplevel)
+path="$LOCATION/tmp-squash-<slug>-$$"
+cleanup() {
+  if ! git -C "$root" worktree remove --force "$path"; then
+    echo "temporary worktree cleanup failed: $path" >&2
+    return 1
+  fi
+  if git -C "$root" worktree list --porcelain | grep -Fqx "worktree $path"; then
+    echo "temporary worktree still registered after cleanup: $path" >&2
+    return 1
+  fi
+}
+trap cleanup EXIT INT TERM
+
+git worktree add --detach "$path" "$BASE_REF"
+```
+
+Use only `$path` for the disposable operation. Before cleanup, verify the expected commit exists and the operation's result is reachable. Cleanup must run from outside `$path`; confirm afterward with `git worktree list --porcelain` that the exact temporary path is gone. Do not broadly prune unrelated registrations.
 
 **Sandbox fallback:** If `git worktree add` fails with a permission error (sandbox denial), tell the user the sandbox blocked worktree creation and you're working in the current directory instead. Then run setup and baseline tests in place.
 
@@ -130,6 +169,8 @@ npm test / cargo test / pytest / go test ./...
 **If tests fail:** Report failures, ask whether to proceed or investigate.
 
 **If tests pass:** Report ready.
+
+For integration or overlay operations, also verify the exact changed-path set and preserve a pre-operation fingerprint. If the worktree was dirty before the operation, compare its staged/unstaged name lists and diff after restoration; do not claim preservation from a successful command alone.
 
 ### Report
 
@@ -190,6 +231,10 @@ Ready to implement <feature-name>
 - Use `git worktree add` when you have a native worktree tool (e.g., `EnterWorktree`). This is the #1 mistake — if you have it, use it.
 - Skip Step 1a by jumping straight to Step 1b's git commands
 - Create worktree without verifying it's ignored (project-local)
+- Mutate an existing named worktree with staged or unstaged changes
+- Use checkout overlays, patch application, reset, clean, or branch-ref moves in a dirty target worktree
+- Reuse an unowned scratch path
+- Skip the disposable-worktree cleanup trap or post-cleanup assertion
 - Skip baseline test verification
 - Proceed with failing tests without asking
 
@@ -198,5 +243,9 @@ Ready to implement <feature-name>
 - Prefer native tools over git fallback
 - Follow directory priority: explicit instructions > existing project-local directory > default
 - Verify directory is ignored for project-local
+- Record disposable-worktree purpose, base, owner, and cleanup plan
+- Install cleanup before creating disposable work
+- Verify exact result paths and reachability before cleanup
 - Auto-detect and run project setup
 - Verify clean test baseline
+- Compare pre/post dirty-worktree fingerprints when preservation is involved
