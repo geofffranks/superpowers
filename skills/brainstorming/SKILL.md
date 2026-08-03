@@ -42,8 +42,7 @@ You MUST create a task for each of these items and complete them in order:
 6. **Write design doc + task checklist** — save to `docs/superpowers/<tkid>-<slug>/design_spec.md` (never commit — see "After the Design"); append the `## Implementation Tasks` checklist so the design doc *is* the plan
 7. **Spec self-review** — quick inline check for placeholders, contradictions, ambiguity, scope (see below)
 8. **User reviews written doc** — ask the user to review the design doc + task checklist before proceeding
-9. **Choose execution path** — after approval, ask whether to implement inline or delegate the checklist to the subagent workflow
-10. **Execute the chosen path** — follow the selected workflow (see "After the Design")
+9. **Choose execution path** — offer the end-fork: Lightweight (implement in-session off the checklist) or Full plan (invoke writing-plans). See "End Fork" below
 
 ## Process Flow
 
@@ -68,7 +67,8 @@ digraph brainstorming {
     "User approves design?" -> "Present design sections" [label="no, revise"];
     "User approves design?" -> "Write design doc\n+ task checklist" [label="yes"];
     "Write design doc\n+ task checklist" -> "Spec self-review\n(fix inline)";
-    "Spec self-review\n(fix inline)" -> "User reviews doc?";
+    "Spec self-review\n(fix inline)" -> "Dispatch plan-reviewer\n(address findings)";
+    "Dispatch plan-reviewer\n(address findings)" -> "User reviews doc?";
     "User reviews doc?" -> "Write design doc\n+ task checklist" [label="changes requested"];
     "User reviews doc?" -> "Execution Fork:\ninline or subagent workflow?" [label="approved"];
     "Execution Fork:\ninline or subagent workflow?" -> "Implement inline\noff the checklist" [label="inline"];
@@ -87,8 +87,7 @@ Do NOT invoke frontend-design, mcp-builder, or any other implementation skill di
 
 **Understanding the idea:**
 
-- Check out the current project state first (files, docs, recent commits). **When the investigation is substantial** (large codebase, unfamiliar domain, many files to cross-reference), delegate the research instead of exploring inline — give it the research question, whether to look locally or externally, and your success criterion. This keeps your context clean for the design dialogue. For a quick check of a few files, explore inline.
-  - **Prefer clod-subagent:** call `mcp__clod-subagent__subagent` with `model: "claude-haiku-4-5-20251001"`, `system_prompt` = the body of `~/.config/polytoken/subagents/researcher.md` (drop the YAML frontmatter and the trailing `Prompt:` / `{{ prompt }}` lines), and `prompt` = the research question, ending with: *"Return your findings as text sections: SUMMARY, FILES (repo paths examined), SOURCES (external refs)."* If `clod-subagent` is not connected, fall back to dispatching the harness `researcher` subagent.
+- Check out the current project state first (files, docs, recent commits). **When the investigation is substantial** (large codebase, unfamiliar domain, many files to cross-reference), delegate to the `researcher` subagent instead of exploring inline — give it the research question, whether to look locally or externally, and your success criterion. This keeps your context clean for the design dialogue. For a quick check of a few files, explore inline.
 - Before asking detailed questions, assess scope: if the request describes multiple independent subsystems (e.g., "build a platform with chat, file storage, billing, and analytics"), flag this immediately. Don't spend questions refining details of a project that needs to be decomposed first.
 - If the project is too large for a single spec, help the user decompose into sub-projects: what are the independent pieces, how do they relate, what order should they be built? Then brainstorm the first sub-project through the normal design flow. Each sub-project gets its own spec → plan → implementation cycle.
 - For appropriately-scoped projects, ask questions one at a time to refine the idea
@@ -130,11 +129,11 @@ Do NOT invoke frontend-design, mcp-builder, or any other implementation skill di
 - Write the validated design (spec) to `docs/superpowers/<tkid>-<slug>/design_spec.md` (`<tkid>` = the ticket id, `<slug>` = a short kebab-case topic slug). See `herdle-tk-artifacts` for the naming and lifecycle convention.
   - (User preferences for spec location override this default)
 - Use elements-of-style:writing-clearly-and-concisely skill if available
-- **Never commit.** docs/superpowers artifacts are local working docs, not version control — never `git add` or `git commit` them.
+- **Never commit.** docs/superpowers artifacts are local working docs, not version control — never `git add` or `git commit` them. Any full plan (from writing-plans) goes in this same `<tkid>-<slug>` directory, next to this doc.
 
 **Implementation Tasks (append to the design doc):**
 
-The design doc ends with an `## Implementation Tasks` checklist — this is what makes the doc *the plan*. There is no separate plan step: you implement straight off this checklist. Write the tasks **TDD-lite**: each task carries a title, the files it touches, what its test asserts (intent, not the code), and a one-line "done when". The implementing agent writes the real test and code live via `superpowers:test-driven-development` — do not spell out full code blocks or exact commands here.
+The design doc ends with an `## Implementation Tasks` checklist — this is what makes the doc *the plan*, so a separate writing-plans pass isn't needed for the common case. Write the tasks **TDD-lite**: each task carries a title, the files it touches, what its test asserts (intent, not the code), and a one-line "done when". The implementing agent writes the real test and code live via `superpowers:test-driven-development` — do not spell out full code blocks or exact commands here.
 
 Wrap the work in the fixed **Setup** (first) and **Code Review** + **Finalize** (last two) tasks per `herdle-tk-artifacts`. Follow that skill for the exact task contents and lifecycle stamping — don't restate them here.
 
@@ -148,12 +147,18 @@ After writing the spec document, look at it with fresh eyes:
 
 Fix any issues inline. No need to re-review — just fix and move on.
 
+**Plan-reviewer dispatch:** After the inline self-review, dispatch the
+`plan-reviewer` subagent with the spec path (template:
+spec-document-reviewer-prompt.md). The inline check is a quick first pass; the
+plan-reviewer is the thorough second pass. Address every severity-classified
+finding before asking the user to review.
+
 **User Review Gate:**
-After the self-review, ask the user to review the written doc before proceeding:
+After the review loop passes, ask the user to review the written doc before proceeding:
 
 > "Design doc + task checklist written to `<path>`. Please review it and let me know if you want to make any changes before we implement."
 
-Wait for the user's response. If they request changes, make them and re-run the self-review. Only proceed once the user approves.
+Wait for the user's response. If they request changes, make them and re-run the review loop. Only proceed once the user approves.
 
 **Implementation paths:**
 
