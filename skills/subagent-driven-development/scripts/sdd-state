@@ -1,0 +1,190 @@
+#!/usr/bin/env python3
+"""Dependency-free atomic SDD review state and progress ledger helper."""
+import argparse, fcntl, json, os, re, subprocess, sys, tempfile, time
+from pathlib import Path
+
+FINDING_ID = re.compile(r"^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*$")
+
+TRANSITIONS = {
+    "pending": {"implementing"},
+    "implementing": {"implemented"},
+    "implemented": {"reviewing"},
+    "reviewing": {"approved", "needs_fixes"},
+    "needs_fixes": {"fixing"},
+    "fixing": {"rereviewing"},
+    "rereviewing": {"approved", "needs_fixes"},
+    "approved": {"complete"},
+    "complete": set(),
+}
+
+def die(message, code=2):
+    print(message, file=sys.stderr)
+    raise SystemExit(code)
+
+def git(repo, *args):
+    p = subprocess.run(["git", "-C", str(repo), *args], text=True,
+                       stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if p.returncode:
+        die(p.stderr.strip() or "git command failed", 3)
+    return p.stdout.strip()
+
+def sha(repo, value):
+    return git(repo, "rev-parse", "--verify", value)
+
+def descendant(repo, ancestor, head):
+    return subprocess.run(["git", "-C", str(repo), "merge-base", "--is-ancestor", ancestor, head]).returncode == 0
+
+def atomic_write(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix=f".{path.name}.tmp.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(data); stream.flush(); os.fsync(stream.fileno())
+        os.replace(name, path)
+    finally:
+        if os.path.exists(name): os.unlink(name)
+
+def paths(repo):
+    workspace = Path(repo) / ".superpowers" / "sdd"
+    return workspace, workspace / "state.json", workspace / "progress.md"
+
+def publication_lock(workspace):
+    workspace.mkdir(parents=True, exist_ok=True)
+    stream = open(workspace / ".publish.lock", "a+", encoding="utf-8")
+    fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+    return stream
+
+def recover(workspace, state_path, ledger_path):
+    pending_path = workspace / ".publish.pending"
+    if not pending_path.exists():
+        return
+    try:
+        pending = json.loads(pending_path.read_text(encoding="utf-8"))
+        atomic_write(state_path, pending["state"])
+        atomic_write(ledger_path, pending["ledger"])
+        pending_path.unlink()
+    except Exception as exc:
+        die(f"atomic state/ledger recovery failed: {exc}", 5)
+
+def load(repo):
+    workspace, state_path, ledger_path = paths(repo)
+    lock = publication_lock(workspace)
+    try:
+        recover(workspace, state_path, ledger_path)
+        try: return json.loads(state_path.read_text(encoding="utf-8"))
+        except FileNotFoundError: die("state is not initialized; corrective command: sdd-state init TASK BASE HEAD")
+        except Exception as exc: die(f"invalid state: {exc}", 4)
+    finally:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+        lock.close()
+
+def parse_findings(value):
+    if not value:
+        return []
+    findings = []
+    seen = set()
+    for token in value.split(","):
+        parts = token.split(":")
+        if len(parts) != 2 or not FINDING_ID.fullmatch(parts[0] or ""):
+            die(f"malformed finding ID: {parts[0] if parts else token}", 2)
+        if parts[0] in seen:
+            die(f"duplicate finding ID: {parts[0]}", 2)
+        if parts[1] not in {"Critical", "Important", "Minor"}:
+            die(f"malformed finding token: {token}", 2)
+        seen.add(parts[0])
+        findings.append({"id": parts[0], "severity": parts[1]})
+    return findings
+
+def publish(repo, state, event):
+    workspace, state_path, ledger_path = paths(repo)
+    lock = publication_lock(workspace)
+    pending_path = workspace / ".publish.pending"
+    try:
+        recover(workspace, state_path, ledger_path)
+        new_state = json.dumps(state, indent=2, sort_keys=True) + "\n"
+        old_ledger = ledger_path.read_text(encoding="utf-8") if ledger_path.exists() else ""
+        new_ledger = old_ledger + event.rstrip() + "\n"
+        state_backup = state_path.read_bytes() if state_path.exists() else None
+        ledger_backup = ledger_path.read_bytes() if ledger_path.exists() else None
+        pending = json.dumps({"state": new_state, "ledger": new_ledger}, sort_keys=True) + "\n"
+        atomic_write(pending_path, pending)
+        atomic_write(state_path, new_state)
+        if os.environ.get("SUPERPOWERS_SDD_CRASH_AFTER_STATE_INSTALL") == "1":
+            os._exit(6)
+        if os.environ.get("SUPERPOWERS_SDD_FAIL_AFTER_INSTALL") == "1":
+            raise OSError("injected failure after state install")
+        atomic_write(ledger_path, new_ledger)
+        pending_path.unlink()
+    except Exception as exc:
+        for path, backup in ((state_path, state_backup), (ledger_path, ledger_backup)):
+            if backup is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.write_bytes(backup)
+        pending_path.unlink(missing_ok=True)
+        die(f"atomic state/ledger publication failed: {exc}", 5)
+    finally:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+        lock.close()
+
+def main():
+    ap = argparse.ArgumentParser(prog="sdd-state", description="Update atomic SDD state and progress ledger.")
+    ap.add_argument("--repo", default=None, help="repository/worktree path (default: Git root)")
+    sub = ap.add_subparsers(dest="command", required=True)
+    i = sub.add_parser("init"); i.add_argument("task"); i.add_argument("base"); i.add_argument("head"); i.add_argument("--mode", default="initial-task")
+    t = sub.add_parser("transition"); t.add_argument("target"); t.add_argument("--head"); t.add_argument("--package"); t.add_argument("--report"); t.add_argument("--findings", default=""); t.add_argument("--fix-head"); t.add_argument("--approved-head")
+    r = sub.add_parser("record"); r.add_argument("--package"); r.add_argument("--report"); r.add_argument("--findings", default=""); r.add_argument("--fix-head"); r.add_argument("--approved-head")
+    sub.add_parser("status"); f = sub.add_parser("findings"); f.add_argument("value")
+    a = ap.parse_args()
+    repo = Path(a.repo or git(Path.cwd(), "rev-parse", "--show-toplevel"))
+    workspace, state_path, ledger_path = paths(repo)
+    if a.command == "init":
+        base, head = sha(repo, a.base), sha(repo, a.head)
+        if not descendant(repo, base, head): die("HEAD must descend from BASE", 3)
+        state = {"version": 1, "task": a.task, "state": "pending", "task_base": base, "implementation_head": head, "reviewed_head": None, "review_mode": a.mode, "package_manifest": None, "review_report": None, "open_findings": [], "fix_head": None, "final_approved_head": None}
+        publish(repo, state, "- initialized v1 task=%s base=%s head=%s" % (a.task, base[:12], head[:12])); print("initialized") ; return
+    state = load(repo)
+    if a.command == "status": print(state["state"]); return
+    if a.command == "findings":
+        state["open_findings"] = parse_findings(a.value)
+        publish(repo, state, "- findings updated (%d)" % len(state["open_findings"])); print("findings recorded"); return
+    if a.command == "record":
+        for key in ("package", "report", "fix_head", "approved_head"):
+            val = getattr(a, key)
+            if val:
+                if key.endswith("head"):
+                    resolved = sha(repo, val)
+                    if not descendant(repo, state["task_base"], resolved): die(f"{key.replace('_', ' ')} must be a descendant of task base", 3)
+                    state["fix_head" if key == "fix_head" else "final_approved_head"] = resolved
+                else:
+                    state["package_manifest" if key == "package" else "review_report"] = val
+        if a.findings: state["open_findings"] = parse_findings(a.findings)
+        publish(repo, state, "- recorded package/report/findings/fix/approved metadata"); print("recorded"); return
+    target = a.target
+    if target not in TRANSITIONS.get(state["state"], set()):
+        valid = sorted(TRANSITIONS.get(state["state"], []))
+        corrective = valid[0] if valid else "the-valid-target"
+        die(f"invalid transition: current state {state['state']}; corrective command: sdd-state transition {corrective}")
+    head = sha(repo, a.head) if a.head else (state.get("fix_head") or state["implementation_head"])
+    if not descendant(repo, state["task_base"], head): die("head is not a descendant of task base", 3)
+    if target == "approved" and any(x.get("severity") in ("Critical", "Important", "critical", "important") for x in state["open_findings"]): die("cannot approve with blocking findings", 3)
+    if target == "rereviewing":
+        if state.get("reviewed_head") in (None, state["task_base"]): die("cannot rereview from task base", 3)
+        if head == state["reviewed_head"]: die("rereview head must change", 3)
+        if not descendant(repo, state["reviewed_head"], head): die("rereview head is not a descendant of reviewed head", 3)
+    if target == "complete" and any(x.get("severity") in ("Critical", "Important", "critical", "important") for x in state["open_findings"]): die("cannot complete with blocking findings", 3)
+    state["state"] = target
+    if target in ("reviewing", "rereviewing"): state["reviewed_head"] = head
+    if target == "approved": state["final_approved_head"] = head
+    if a.package: state["package_manifest"] = a.package
+    if a.report: state["review_report"] = a.report
+    if a.findings: state["open_findings"] = parse_findings(a.findings)
+    for key in ("fix_head", "approved_head"):
+        val = getattr(a, key)
+        if val:
+            resolved = sha(repo, val)
+            if not descendant(repo, state["task_base"], resolved): die(f"{key.replace('_', ' ')} must be a descendant of task base", 3)
+            state["fix_head" if key == "fix_head" else "final_approved_head"] = resolved
+    publish(repo, state, f"- {target} (head {head[:12]})"); print(target)
+
+if __name__ == "__main__": main()

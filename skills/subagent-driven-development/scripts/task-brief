@@ -1,40 +1,403 @@
 #!/usr/bin/env bash
-# Extract one task's full text from an implementation plan into a file the
-# implementer reads in one call, so the task text never has to be pasted
-# through the controller's context.
+# Publish one canonical plan task as a bounded brief and versioned manifest.
 #
-# Usage: task-brief PLAN_FILE TASK_NUMBER [OUTFILE]
-# Default OUTFILE: <repo-root>/.superpowers/sdd/task-<N>-brief.md
-# (per worktree; concurrent runs in the same working tree share it).
+# Usage: task-brief PLAN_FILE TASK_NUMBER [BRIEF_OUT]
+#                   [--manifest MANIFEST_OUT] [--report REPORT_PATH]
+#                   [--max-bytes N]
 set -euo pipefail
 
-if [ $# -lt 2 ] || [ $# -gt 3 ]; then
-  echo "usage: task-brief PLAN_FILE TASK_NUMBER [OUTFILE]" >&2
-  exit 2
-fi
+script_dir=$(cd "$(dirname "$0")" && pwd)
+exec python3 - "$script_dir" "$@" <<'PY'
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
 
-plan=$1
-n=$2
-[ -f "$plan" ] || { echo "no such plan file: $plan" >&2; exit 2; }
+USAGE = (
+    "usage: task-brief PLAN_FILE TASK_NUMBER [BRIEF_OUT] "
+    "[--manifest MANIFEST_OUT] [--report REPORT_PATH] [--max-bytes N]"
+)
+SCALARS = {
+    "focused_behavior": "Focused behavior",
+    "test_intent": "Test intent",
+    "done_when": "Done when",
+    "review_intent": "Review intent",
+}
+LISTS = {
+    "files": "Files",
+    "inherited_interfaces": "Inherited interfaces",
+    "out_of_scope": "Out of scope",
+}
 
-if [ $# -eq 3 ]; then
-  out=$3
-else
-  dir=$("$(cd "$(dirname "$0")" && pwd)/sdd-workspace")
-  out="$dir/task-${n}-brief.md"
-fi
 
-awk -v n="$n" '
-  /^```/ { infence = !infence }
-  !infence && /^#+[ \t]+Task[ \t]+[0-9]+/ {
-    intask = ($0 ~ ("^#+[ \t]+Task[ \t]+" n "([^0-9]|$)"))
-  }
-  intask { print }
-' "$plan" > "$out"
+class TaskBriefError(Exception):
+    def __init__(self, message, status=2):
+        super().__init__(message)
+        self.status = status
 
-if [ ! -s "$out" ]; then
-  echo "task ${n} not found in ${plan} (no heading matching 'Task ${n}')" >&2
-  exit 3
-fi
 
-echo "wrote ${out}: $(wc -l < "$out" | tr -d ' ') lines"
+def fail(message, status=2):
+    raise TaskBriefError(message, status)
+
+
+def parse_arguments(arguments):
+    if len(arguments) < 2:
+        fail(USAGE)
+    plan, task_text, *remaining = arguments
+    try:
+        task = int(task_text)
+        if task < 1 or str(task) != task_text:
+            raise ValueError
+    except ValueError:
+        fail(f"invalid task number: {task_text}")
+
+    brief = None
+    options = {}
+    index = 0
+    while index < len(remaining):
+        value = remaining[index]
+        if value in ("--manifest", "--report", "--max-bytes"):
+            if value in options or index + 1 >= len(remaining):
+                fail(USAGE)
+            options[value] = remaining[index + 1]
+            index += 2
+        elif value.startswith("--") or brief is not None:
+            fail(USAGE)
+        else:
+            brief = value
+            index += 1
+
+    maximum_text = options.get("--max-bytes", "32768")
+    try:
+        maximum = int(maximum_text)
+        if maximum < 1 or str(maximum) != maximum_text:
+            raise ValueError
+    except ValueError:
+        fail(f"invalid maximum byte count: {maximum_text}")
+    maximum = min(maximum, 32768)
+    return plan, task, brief, options.get("--manifest"), options.get("--report"), maximum
+
+
+def outside_fences(lines):
+    visible = []
+    fence_character = None
+    fence_length = 0
+    for line in lines:
+        match = re.match(r"^ {0,3}(`{3,}|~{3,})", line)
+        if match:
+            marker = match.group(1)
+            if fence_character is None:
+                fence_character = marker[0]
+                fence_length = len(marker)
+            elif marker[0] == fence_character and len(marker) >= fence_length:
+                fence_character = None
+                fence_length = 0
+            visible.append("")
+        elif fence_character is None:
+            visible.append(line)
+        else:
+            visible.append("")
+    return visible
+
+
+def extract_task(plan_text, task):
+    lines = plan_text.splitlines(keepends=True)
+    visible = outside_fences(lines)
+    heading = re.compile(r"^### Task ([0-9]+): (\S.*?)[ \t]*(?:\r?\n)?$")
+    headings = []
+    for index, line in enumerate(visible):
+        match = heading.match(line)
+        if match:
+            headings.append((index, int(match.group(1)), match.group(2)))
+    matches = [entry for entry in headings if entry[1] == task]
+    if len(matches) != 1:
+        condition = "missing" if not matches else "duplicate"
+        fail(f"{condition} heading for task {task}", 3)
+    start, _, title = matches[0]
+    end = len(lines)
+    for index, _, _ in headings:
+        if index > start:
+            end = index
+            break
+    return "".join(lines[start:end]), title
+
+
+def field_lines(brief):
+    lines = brief.splitlines()
+    return lines, outside_fences(lines)
+
+
+def scalar_value(visible, label, optional=False):
+    pattern = re.compile(rf"^\*\*{re.escape(label)}:\*\*[ \t]*(.*)$")
+    values = [match.group(1).strip() for line in visible if (match := pattern.match(line))]
+    if optional and not values:
+        return None
+    if len(values) != 1:
+        fail(f"{'missing' if not values else 'duplicate'} {label} slot")
+    if not values[0]:
+        fail(f"empty {label} slot")
+    return values[0]
+
+
+def list_value(lines, visible, label):
+    pattern = re.compile(rf"^\*\*{re.escape(label)}:\*\*[ \t]*$")
+    positions = [index for index, line in enumerate(visible) if pattern.match(line)]
+    if len(positions) != 1:
+        fail(f"{'missing' if not positions else 'duplicate'} {label} slot")
+    values = []
+    index = positions[0] + 1
+    while index < len(lines):
+        line = visible[index]
+        if line.startswith("- "):
+            value = line[2:].strip()
+            if not value:
+                fail(f"empty {label} bullet")
+            values.append(value)
+            index += 1
+            continue
+        if not line.strip():
+            index += 1
+            if values:
+                break
+            continue
+        break
+    if not values:
+        fail(f"empty {label} slot")
+    return values
+
+
+def parse_brief(brief, task, title):
+    lines, visible = field_lines(brief)
+    fields = {name: scalar_value(visible, label) for name, label in SCALARS.items()}
+    lists = {name: list_value(lines, visible, label) for name, label in LISTS.items()}
+    cohesion_override = scalar_value(visible, "Cohesion override", optional=True)
+
+    file_pattern = re.compile(r"^(Create|Modify|Test): `([^`]+)`$")
+    parsed_files = []
+    for value in lists["files"]:
+        match = file_pattern.match(value)
+        if not match or not match.group(2).strip():
+            fail(f"invalid Files bullet: {value}")
+        parsed_files.append(match.groups())
+    production_files = [path for action, path in parsed_files if action != "Test"]
+
+    inherited = lists["inherited_interfaces"]
+    if inherited == ["None"]:
+        inherited = []
+    elif "None" in inherited:
+        fail("Inherited interfaces cannot combine None with other bullets")
+    out_of_scope = lists["out_of_scope"]
+
+    roots = {
+        path.split("/", 1)[0] if "/" in path else "."
+        for path in production_files
+    }
+    combined = " ".join((title, fields["focused_behavior"], fields["test_intent"]))
+    refactor_plus_behavior = bool(
+        re.search(r"\brefactor\w*\b", combined, re.IGNORECASE)
+        and re.search(r"\b(add|chang|implement|introduc|fix|behavior|feature)\w*\b", combined, re.IGNORECASE)
+    )
+    warnings = []
+    if len(production_files) > 4:
+        warnings.append("more than four production files")
+    if len(roots) > 1:
+        warnings.append("multiple package roots")
+    if refactor_plus_behavior:
+        warnings.append("refactor plus behavior")
+    if warnings and cohesion_override is None:
+        fail("cohesion override required: " + ", ".join(warnings))
+
+    return {
+        "version": 1,
+        "task": task,
+        "title": title,
+        "focused_behavior": fields["focused_behavior"],
+        "production_files": production_files,
+        "test_intent": fields["test_intent"],
+        "inherited_interfaces": inherited,
+        "out_of_scope": out_of_scope,
+        "done_when": fields["done_when"],
+        "review_intent": fields["review_intent"],
+        "cohesion_override": cohesion_override,
+    }
+
+
+def default_paths(script_dir, task):
+    try:
+        workspace = subprocess.run(
+            [os.path.join(script_dir, "sdd-workspace")],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError) as error:
+        fail(f"cannot resolve SDD workspace: {error}")
+    return (
+        os.path.join(workspace, f"task-{task}-brief.md"),
+        os.path.join(workspace, f"task-{task}-manifest.json"),
+        os.path.join(workspace, f"task-{task}-report.md"),
+    )
+
+
+def make_temporary(destination, contents):
+    parent = os.path.dirname(os.path.abspath(destination)) or "."
+    descriptor = None
+    path = None
+    try:
+        descriptor, path = tempfile.mkstemp(prefix=".task-brief.", suffix=".tmp", dir=parent)
+        stream = os.fdopen(descriptor, "wb")
+        descriptor = None
+        with stream:
+            stream.write(contents)
+            stream.flush()
+            os.fsync(stream.fileno())
+        return path
+    except BaseException as error:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        if path is not None:
+            try:
+                os.unlink(path)
+            except FileNotFoundError:
+                pass
+        if isinstance(error, OSError):
+            fail(f"cannot stage {destination}: {error}", 5)
+        raise
+
+
+def contain_outputs(repo_root, outputs):
+    root = Path(repo_root).resolve()
+    contained = []
+    for destination, contents in outputs:
+        path = Path(destination)
+        resolved = path.resolve() if path.is_absolute() else (Path.cwd() / path).resolve()
+        try:
+            resolved.relative_to(root)
+        except ValueError:
+            fail(f"output path escapes repository root: {destination}", 2)
+        contained.append((str(resolved), contents))
+    return contained
+
+
+def publish(outputs):
+    destinations = [destination for destination, _ in outputs]
+    if len({os.path.abspath(value) for value in destinations}) != len(destinations):
+        fail("brief and manifest destinations must differ")
+    temporaries = []
+    backups = {}
+    installed = []
+    committed = False
+    try:
+        for destination, contents in outputs:
+            temporaries.append(make_temporary(destination, contents))
+        for destination in destinations:
+            if os.path.isdir(destination) and not os.path.islink(destination):
+                fail(f"cannot publish over directory: {destination}", 5)
+        for destination in destinations:
+            if os.path.lexists(destination):
+                parent = os.path.dirname(os.path.abspath(destination)) or "."
+                descriptor, backup = tempfile.mkstemp(prefix=".task-brief-backup.", suffix=".tmp", dir=parent)
+                os.close(descriptor)
+                os.unlink(backup)
+                os.replace(destination, backup)
+                backups[destination] = backup
+        for temporary, destination in zip(temporaries, destinations):
+            os.replace(temporary, destination)
+            installed.append(destination)
+            if os.environ.get("SUPERPOWERS_TASK_BRIEF_FAIL_AFTER_INSTALL") == str(len(installed)):
+                raise OSError(f"injected failure after destination install {len(installed)}")
+        temporaries.clear()
+        committed = True
+        for cleanup_number, (destination, backup) in enumerate(list(backups.items()), 1):
+            try:
+                if os.environ.get("SUPERPOWERS_TASK_BRIEF_FAIL_BACKUP_CLEANUP") == str(cleanup_number):
+                    raise OSError(f"injected failure during backup unlink {cleanup_number}")
+                os.unlink(backup)
+            except OSError as error:
+                print(f"task-brief: cannot remove committed backup {backup}: {error}", file=sys.stderr)
+            else:
+                del backups[destination]
+    except TaskBriefError:
+        raise
+    except OSError as error:
+        fail(f"atomic publication failed: {error}", 5)
+    finally:
+        for temporary in temporaries:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
+        if not committed:
+            for destination in installed:
+                try:
+                    os.unlink(destination)
+                except FileNotFoundError:
+                    pass
+            for destination, backup in backups.items():
+                try:
+                    os.replace(backup, destination)
+                except FileNotFoundError:
+                    pass
+
+
+def main():
+    script_dir, *arguments = sys.argv[1:]
+    plan_path, task, brief_path, manifest_path, report_path, maximum = parse_arguments(arguments)
+    try:
+        plan_bytes = Path(plan_path).read_bytes()
+        plan_text = plan_bytes.decode("utf-8")
+    except (OSError, UnicodeError) as error:
+        fail(f"cannot read plan file {plan_path}: {error}")
+
+    brief, title = extract_task(plan_text, task)
+    brief_bytes = brief.encode("utf-8")
+    manifest = parse_brief(brief, task, title)
+    if len(brief_bytes) > maximum:
+        fail(f"task brief is {len(brief_bytes)} bytes; maximum is {maximum}", 4)
+
+    defaults = None
+    if brief_path is None or manifest_path is None or report_path is None:
+        defaults = default_paths(script_dir, task)
+    brief_path = brief_path or defaults[0]
+    manifest_path = manifest_path or defaults[1]
+    report_path = report_path or defaults[2]
+    try:
+        repository_root = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError) as error:
+        fail(f"cannot resolve repository root: {error}")
+    manifest["brief"] = brief_path
+    manifest["report"] = report_path
+    ordered_manifest = {
+        key: manifest[key]
+        for key in (
+            "version", "task", "title", "brief", "report", "focused_behavior",
+            "production_files", "test_intent", "inherited_interfaces", "out_of_scope",
+            "done_when", "review_intent", "cohesion_override",
+        )
+    }
+    manifest_bytes = (json.dumps(ordered_manifest, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    outputs = contain_outputs(repository_root, ((brief_path, brief_bytes), (manifest_path, manifest_bytes), (report_path, b"")))
+    publish(outputs[:2])
+    print(f"{brief_path}: {len(brief_bytes)} bytes")
+    print(f"{manifest_path}: {len(manifest_bytes)} bytes")
+
+
+try:
+    main()
+except TaskBriefError as error:
+    print(error, file=sys.stderr)
+    sys.exit(error.status)
+PY

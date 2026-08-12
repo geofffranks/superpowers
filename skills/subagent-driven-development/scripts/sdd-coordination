@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+import hashlib,json,os,re,subprocess,sys
+from pathlib import Path
+HEX40=re.compile(r'^[0-9a-f]{40}$'); HEX64=re.compile(r'^[0-9a-f]{64}$')
+IDS=['H1','H2','H3','S1','S2','S3','S4','S5','S6','C1','C2','C3']; REPO_ORDER=['herdle','superpowers','claude-config']; REPOS=set(REPO_ORDER)
+def need(ok,msg):
+ if not ok: raise ValueError(msg)
+def sha(path): return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+def git(path,*args):
+ p=subprocess.run(['git','-C',str(path),*args],text=True,capture_output=True)
+ need(p.returncode==0,f'git evidence unavailable for {path}: {p.stderr.strip()}')
+ return p.stdout.strip()
+def obj(value,keys,label): need(isinstance(value,dict) and set(value)==set(keys),f'{label} structure invalid')
+FINDING_ID=re.compile(r'^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*$')
+def finding(value,label,seen=None):
+ obj(value,['id','severity'],label); need(isinstance(value['id'],str) and FINDING_ID.fullmatch(value['id']),'finding ID grammar invalid'); need(seen is None or value['id'] not in seen,'finding ID uniqueness invariant failed');
+ if seen is not None: seen.add(value['id'])
+ need(value['severity'] in ('Critical','Important','Minor'),f'{label} severity invalid')
+def records(value,label): need(isinstance(value,list),f'{label} structure invalid'); return value
+def schema_check(base):
+ for name in ('sdd-coordination-schema.json','review-package-schema.json'):
+  p=base/name; need(p.is_file(),f'{name} missing'); parsed=json.loads(p.read_text()); need(isinstance(parsed,dict),f'{name} invalid')
+def evidence(value,approved,label,repository=None,gate=None,marker=None):
+ obj(value,['gate','repository','path','sha256','revision','marker'],label); need(repository is None or value['repository']==repository,f'{label} repository binding invalid'); need(gate is None or value['gate']==gate,f'{label} gate binding invalid'); need(marker is None or value['marker']==marker,f'{label} marker binding invalid'); p=Path(value['path']); need(p.exists() and p.is_file() and HEX64.fullmatch(value['sha256']) and sha(p)==value['sha256'] and HEX40.fullmatch(value['revision']) and value['revision'] in approved and value['marker'] in p.read_text(errors='strict'),f'{label} invalid')
+def prerequisite_evidence(gate, revisions, marker=None):
+ need(set(gate['evidence']['source'])==set(revisions) and set(gate['evidence']['installed'])==set(revisions),'gate evidence dependency coverage failed')
+ for kind in ('source','installed'):
+  for repository,revision in revisions.items(): evidence(gate['evidence'][kind][repository],{revision},'prerequisite evidence',repository,gate['name'],marker)
+def compatibility_evidence(value,label,revision,binary,marker):
+ obj(value,['path','sha256','revision','binary_sha256'],label); p=Path(value['path'])
+ need(p.is_file() and HEX64.fullmatch(value['sha256']) and sha(p)==value['sha256'] and value['revision']==revision and HEX40.fullmatch(value['revision']) and value['binary_sha256']==binary and HEX64.fullmatch(value['binary_sha256']),f'{label} invalid'); need(marker in p.read_text(errors='strict'),'Herdle compatibility marker drift')
+def main():
+ if len(sys.argv)!=2:
+  print('usage: sdd-coordination ARTIFACT',file=sys.stderr); return 6
+ try:
+  artifact=Path(sys.argv[1]); c=json.loads(artifact.read_text()); need(isinstance(c,dict),'coordination schema: top-level structure invalid'); schema_check(Path(__file__).parent)
+  need(c.get('version')==1,'coordination schema: version must be 1')
+  required_revision='99b0ec512882719451a9945a94b2c44db1792472'; required_binary='eea535bfea63b17f868f9e01f071285d6f4a13e8c478fa05912d4282bfd52dde'
+  need(c.get('required_herdle_revision')==required_revision and c.get('required_herdle_binary_sha256')==required_binary,'Herdle compatibility contract drift')
+  compat=c.get('herdle_compatibility'); obj(compat,['marker','source','installed'],'Herdle compatibility'); need(isinstance(compat['marker'],str) and compat['marker'] and isinstance(compat['source'],dict) and isinstance(compat['installed'],dict),'Herdle compatibility structure invalid'); compatibility_evidence(compat['source'],'Herdle compatibility source',required_revision,required_binary,compat['marker']); compatibility_evidence(compat['installed'],'Herdle compatibility installed',required_revision,required_binary,compat['marker'])
+  repos=c.get('repositories'); need(isinstance(repos,dict) and set(repos)==REPOS,'repository identity invariant failed')
+  for name,r in repos.items():
+   obj(r,['repository','ticket','path','base_sha','head_sha'],f'repository {name}'); need(r['repository']==name and isinstance(r['ticket'],str) and HEX40.fullmatch(r['base_sha']) and HEX40.fullmatch(r['head_sha']),'repository identity invariant failed'); p=Path(r['path']); need(p.is_dir(),'repository path evidence missing'); need(git(p,'rev-parse','HEAD')==r['head_sha'],f'{name} recorded head drift'); need(subprocess.run(['git','-C',str(p),'merge-base','--is-ancestor',r['base_sha'],r['head_sha']]).returncode==0,f'{name} base/head ancestry failed')
+  em=c.get('expected_task_manifest'); obj(em,['path','sha256'],'expected manifest'); need(HEX64.fullmatch(em['sha256']),'expected manifest checksum shape invalid'); mp=artifact.parent/em['path']; need(mp.is_file(),'expected manifest evidence missing'); need(sha(mp)==em['sha256'],'expected task manifest checksum drift'); manifest=json.loads(mp.read_text()); need(isinstance(manifest,dict) and manifest.get('version')==1 and manifest.get('tasks')==IDS,'expected task manifest content drift')
+  checkpoints=records(c.get('task_checkpoints'),'task checkpoints'); need(len(checkpoints)==len(IDS) and all(isinstance(x,dict) for x in checkpoints) and {x.get('task') for x in checkpoints}==set(IDS) and len({x.get('task') for x in checkpoints})==len(IDS),'task checkpoint set mismatch')
+  finding_ids=set()
+  for x in checkpoints:
+   obj(x,['task','repository','review','approved_head','findings'],'task checkpoint'); need(x['repository'] in REPOS and x['review']=='independent-initial','task independent review invariant failed'); need(HEX40.fullmatch(x['approved_head']) and x['approved_head']==repos[x['repository']]['head_sha'],'task approval repository/head binding failed'); fs=records(x['findings'],'task findings'); [finding(f,'task finding',finding_ids) for f in fs]; need(not any(f['severity'] in ('Critical','Important') for f in fs),'task review blocking finding')
+  finals=records(c.get('final_reviews'),'final reviews'); need(len(finals)==3 and all(isinstance(x,dict) for x in finals) and {x.get('repository') for x in finals}==REPOS,'final review cardinality invariant failed')
+  for x in finals:
+   obj(x,['repository','review','approved_head','findings','timestamp'],'repository final review'); need(x['repository'] in REPOS and isinstance(x['timestamp'],int),'repository final review fields invalid'); need(x['review']=='repository-final' and HEX40.fullmatch(x['approved_head']) and x['approved_head']==repos[x['repository']]['head_sha'],'final approval repository/head binding failed'); fs=records(x['findings'],'final findings'); [finding(f,'final finding',finding_ids) for f in fs]; need(not any(f['severity'] in ('Critical','Important') for f in fs),'final review blocking finding')
+  cross=c.get('cross_repository_review'); obj(cross,['timestamp','approved'],'cross review'); need(cross['approved'] is True and cross['timestamp']>max(x['timestamp'] for x in finals),'cross-repository review order failed')
+  names=['herdle-deploy','superpowers-deploy','claude-config-deploy','cross-repository-validation']; gates=records(c.get('gates'),'gates'); need(len(gates)==4 and all(isinstance(x,dict) for x in gates) and [x.get('name') for x in gates]==names,'gate structure invalid');
+  for g in gates:
+   obj(g,['name','timestamp','prerequisites','evidence','approved_revisions'],'gate'); need(isinstance(g['evidence'],dict) and set(g['evidence'])=={'source','installed'},'gate structure invalid'); need(isinstance(g['evidence']['source'],dict) and isinstance(g['evidence']['installed'],dict),'gate structure invalid')
+  for i,g in enumerate(gates):
+   need(isinstance(g,dict) and isinstance(g.get('approved_revisions'),dict) and isinstance(g.get('evidence'),dict),'gate structure invalid')
+   expected=REPO_ORDER[:i+1] if i<3 else REPO_ORDER
+   need(g['approved_revisions']=={k:repos[k]['head_sha'] for k in expected},'gate dependency drift invalidated')
+   for j in range(i):
+    prerequisite_revisions={k:repos[k]['head_sha'] for k in (REPO_ORDER[:j+1] if j<3 else REPO_ORDER)}
+    need(gates[j]['approved_revisions']==prerequisite_revisions,'gate prerequisite evidence invalidated')
+    prerequisite_evidence(gates[j],prerequisite_revisions,compat['marker'])
+  for i,g in enumerate(gates):
+   obj(g,['name','timestamp','prerequisites','evidence','approved_revisions'],'gate'); need(isinstance(g['timestamp'],int) and isinstance(g['prerequisites'],list) and isinstance(g['evidence'],dict) and isinstance(g['approved_revisions'],dict),'gate structure invalid'); need(set(g['evidence'])=={'source','installed'},'gate structure invalid'); expected=REPO_ORDER[:i+1] if i<3 else REPO_ORDER; expected_revisions={k:repos[k]['head_sha'] for k in expected}; need(g['approved_revisions']==expected_revisions,'gate dependency drift invalidated'); need(g['prerequisites']==names[:i],'gate prerequisite invariant failed');
+   need(set(g['evidence']['source'])==set(expected) and set(g['evidence']['installed'])==set(expected),'gate evidence dependency coverage failed'); [evidence(g['evidence']['source'][k],{expected_revisions[k]},'gate source evidence',k,g['name'],compat['marker']) for k in expected]; [evidence(g['evidence']['installed'][k],{expected_revisions[k]},'gate installed evidence',k,g['name'],compat['marker']) for k in expected]
+  need(all(gates[i]['timestamp']<gates[i+1]['timestamp'] for i in range(3)),'gate order invariant failed'); need(gates[0]['timestamp']>max(x['timestamp'] for x in finals),'deployment prerequisite gate failed'); need(cross['timestamp']<gates[-1]['timestamp'],'cross-repository gate order failed')
+  installed=c.get('installed_revisions'); need(isinstance(installed,dict) and set(installed)==REPOS and all(v==repos[k]['head_sha'] and HEX40.fullmatch(v) for k,v in installed.items()),'installed revision drift invalidates dependent gates')
+  package=c.get('review_package'); obj(package,['tool','path','revision','sha256'],'review package'); pp=Path(package['path']); need(package['tool']=='review-package' and pp.is_file() and HEX64.fullmatch(package['revision']) and package['revision']==sha(pp) and sha(pp)==package['sha256'],'pinned review-package tool evidence invalid')
+  dirty=c.get('dirty_checkout'); obj(dirty,['path','canonical_path','canonical_evidence','baseline_head','baseline_status','current_status','baseline_hash','current_hash','feature_worktree','feature_diff','unrelated_dockerfile_diff'],'dirty checkout'); ce=dirty['canonical_evidence']; obj(ce,['repository','path','baseline_head','baseline_hash'],'canonical evidence'); anchor=Path(__import__('os').environ.get('SDD_CANONICAL_CHECKOUT_PATH','')); anchor_head=__import__('os').environ.get('SDD_CANONICAL_BASELINE_HEAD',''); anchor_hash=__import__('os').environ.get('SDD_CANONICAL_BASELINE_HASH',''); need(anchor.is_dir() and ce['repository']=='polytoken-container' and Path(ce['path']).resolve()==anchor.resolve() and Path(dirty['canonical_path']).resolve()==anchor.resolve() and HEX40.fullmatch(anchor_head) and HEX64.fullmatch(anchor_hash) and ce['baseline_head']==anchor_head and ce['baseline_hash']==anchor_hash,'trusted canonical checkout anchor mismatch'); dp=Path(dirty['path']).resolve(); fp=Path(dirty['feature_worktree']); need(dp==anchor.resolve() and dp.is_dir() and fp.is_dir(),'dirty checkout identity invalid'); actual_head=git(dp,'rev-parse','HEAD'); actual_status=git(dp,'status','--short'); docker=dp/'Dockerfile'; actual_hash=sha(docker); diff=git(fp,'diff','HEAD','--','Dockerfile'); untracked=git(fp,'ls-files','--others','--exclude-standard','--','*Dockerfile')+git(fp,'ls-files','--others','--ignored','-i','--exclude-standard','--','*Dockerfile'); need(ce['baseline_head']==actual_head and ce['baseline_hash']==actual_hash and dirty['baseline_head']==actual_head and dirty['baseline_status']==actual_status and dirty['current_status']==actual_status and dirty['baseline_hash']==actual_hash and dirty['current_hash']==actual_hash and dirty['feature_diff']=='' and dirty['unrelated_dockerfile_diff']=='' and diff=='' and untracked=='','dirty checkout baseline/current status or hash drift; feature worktree unrelated Dockerfile diff')
+  parity=c.get('installed_source_parity'); need(isinstance(parity,dict) and set(parity)==REPOS,'installed/source parity structure invalid')
+  for name,e in parity.items(): obj(e,['source','installed','source_sha256','installed_sha256','revision','marker'],f'{name} parity'); need(Path(e['source']).is_file() and Path(e['installed']).is_file() and e['source_sha256']==sha(e['source']) and e['installed_sha256']==sha(e['installed']) and e['source_sha256']==e['installed_sha256'] and e['revision']==repos[name]['head_sha'] and HEX40.fullmatch(e['revision']) and e['marker']==compat['marker'] and e['marker'] in Path(e['source']).read_text(errors='strict') and e['marker'] in Path(e['installed']).read_text(errors='strict'),'installed/source parity invariant failed')
+ except (KeyError,TypeError,AttributeError,ValueError,FileNotFoundError,json.JSONDecodeError) as e: print(f'validation failed: {e}',file=sys.stderr); return 6
+ print('coordination valid'); return 0
+if __name__=='__main__': raise SystemExit(main())
