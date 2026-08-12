@@ -76,5 +76,8 @@ clone['id']='f'*64; clone['ordinal']=1; clone['path']={'encoding':'base64','valu
 clone['shard']='shards/duplicate.bin'; shutil.copy(d+'/'+c['shard'],d+'/'+clone['shard'])
 m['changes']=[c,clone]; m['counts'].update(raw=2,name_status=2,changes=2,shards=2); m['total_bytes']*=2
 save(d,m); check(d,False)
+# File and hunk identities are recomputed from the Git range, not trusted.
+d=package('identity-tamper'); m=manifest(d); c=m['changes'][0]; c['id']='f'*64; save(d,m); check(d,False)
+d=package('hunk-identity-tamper'); m=manifest(d); c=next(c for c in m['changes'] if c['hunks']); c['hunks'][0]['id']='e'*64; save(d,m); check(d,False)
 PY
 printf 'S2 focused cases passed\n'
