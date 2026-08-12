@@ -43,6 +43,7 @@ You MUST create a task for each of these items and complete them in order:
 7. **Spec self-review** — quick inline check for placeholders, contradictions, ambiguity, scope (see below)
 8. **User reviews written doc** — ask the user to review the design doc + task checklist before proceeding
 9. **Choose execution path** — offer the end-fork: Lightweight (implement in-session off the checklist) or Full plan (invoke writing-plans). See "End Fork" below
+10. **Execute the chosen path** — after the user selects one option, follow only that execution path; do not begin implementation before the choice.
 
 ## Process Flow
 
