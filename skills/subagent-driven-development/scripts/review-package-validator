@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+import base64,hashlib,json,re,sys
+from pathlib import Path
+ROOT_FIELDS={'version','mode','base_sha','head_sha','ancestral','previous_review','reviewed_head','limits','commits','changes','counts','total_bytes'}
+CHANGE_FIELDS={'id','status','path','old_path','old_mode','new_mode','old_oid','new_oid','classification','shard','shard_kind','bytes','sha256','hunks','ordinal'}
+HUNK_FIELDS={'id','old_start','old_count','new_start','new_count','ordinal'}
+COMMIT_FIELDS={'sha','author','email','subject'}
+MODES={'initial-task','incremental-rereview','final-integration','final-incremental-rereview'}
+STATUSES={'added','modified','deleted','type-changed'}
+HEX40=r'[0-9a-f]{40}'
+HEX64=r'[0-9a-f]{64}'
+def require(cond,msg):
+ if not cond: raise ValueError(msg)
+def string(x): require(isinstance(x,str),'expected string'); return x
+def sha(x): require(isinstance(x,str) and re.fullmatch(HEX40,x),'invalid object id')
+def path_value(x):
+ require(isinstance(x,dict) and set(x)=={'encoding','value'},'invalid path')
+ enc=x['encoding']; value=x['value']; require(enc in {'utf8','base64'} and isinstance(value,str),'invalid path encoding')
+ if enc=='utf8':
+  raw=value.encode('utf-8'); require(raw.decode('utf-8')==value,'noncanonical utf8 path')
+ else:
+  require(bool(value) and len(value)%4==0,'invalid base64 path')
+  try: raw=base64.b64decode(value,validate=True)
+  except Exception: raise ValueError('invalid base64 path')
+  require(base64.b64encode(raw).decode('ascii')==value,'noncanonical base64 path')
+ require(raw and raw not in (b'.',b'..') and b'\x00' not in raw,'invalid path value')
+ return raw
+def main():
+ if len(sys.argv)!=2: return fail('usage: review-package-validator DIR')
+ root=Path(sys.argv[1])
+ try:
+  schema=json.loads((Path(__file__).with_name('review-package-schema.json')).read_text())
+  require(schema.get('type')=='object' and schema.get('additionalProperties') is False,'schema unavailable')
+  m=json.loads((root/'manifest.json').read_text()); require(isinstance(m,dict) and set(m)==ROOT_FIELDS,'invalid root fields')
+  require(m['version']==1 and m['mode'] in MODES and m['ancestral'] is True,'invalid root values'); sha(m['base_sha']); sha(m['head_sha'])
+  inc=m['mode'] in {'incremental-rereview','final-incremental-rereview'}
+  require((m['reviewed_head']==m['base_sha'])==inc and (inc or m['reviewed_head'] is None),'invalid reviewed head')
+  require((m['previous_review'] is not None)==inc,'invalid previous review')
+  if m['reviewed_head'] is not None: sha(m['reviewed_head'])
+  if m['previous_review'] is not None: require(isinstance(m['previous_review'],str) and m['previous_review'] not in {'','.','..'} and '\x00' not in m['previous_review'],'invalid previous review')
+  lim=m['limits']; require(isinstance(lim,dict) and set(lim)=={'max_shard_bytes','max_total_bytes','elevated_reason','elevated_ceiling_source'},'invalid limits')
+  require(all(isinstance(lim[k],int) and not isinstance(lim[k],bool) and lim[k]>0 for k in ('max_shard_bytes','max_total_bytes')),'invalid limits')
+  require(all(lim[k] is None or isinstance(lim[k],str) for k in ('elevated_reason','elevated_ceiling_source')),'invalid elevation')
+  commits=m['commits']; require(isinstance(commits,list),'invalid commits')
+  for c in commits: require(isinstance(c,dict) and set(c)==COMMIT_FIELDS,'invalid commit'); sha(c['sha']); [string(c[k]) for k in ('author','email','subject')]
+  changes=m['changes']; counts=m['counts']; require(isinstance(changes,list) and isinstance(counts,dict) and set(counts)=={'raw','name_status','changes','shards','hunks'},'invalid counts')
+  require(all(isinstance(counts[k],int) and not isinstance(counts[k],bool) and counts[k]>=0 for k in counts),'invalid count values'); require(counts['raw']==counts['name_status']==counts['changes']==counts['shards']==len(changes),'count mismatch')
+  root_real=root.resolve(); index=root/'index.md'; require(index.is_file() and not index.is_symlink(),'invalid index file'); index_real=index.resolve(); require(root_real in index_real.parents,'index escapes package')
+  expected=['# Review package index','', 'Each change lists its canonical path, shard, and every hunk ID.']
+  for c in changes:
+   require(isinstance(c,dict) and isinstance(c.get('path'),dict) and isinstance(c.get('shard'),str) and isinstance(c.get('hunks'),list),'invalid change for index')
+   path=json.dumps(c['path'],sort_keys=True,separators=(',',':')); hunks=','.join(h['id'] for h in c['hunks']) or '-'
+   expected.append(f'- change {c["ordinal"]}: path={path} shard={c["shard"]} hunks={hunks}')
+  require(index.read_text(encoding='utf-8')=='\n'.join(expected)+'\n','invalid index navigation')
+  total=0; hcount=0; ids=set(); paths=set(); inventory=set()
+  for ordinal,c in enumerate(changes):
+   require(isinstance(c,dict) and set(c)==CHANGE_FIELDS,'invalid change fields'); require(isinstance(c['id'],str) and re.fullmatch(r'[0-9a-f]{64}',c['id']) is not None and c['id'] not in ids and c['ordinal']==ordinal,'invalid change identity'); ids.add(c['id'])
+   key=path_value(c['path']); require(key not in paths,'duplicate path'); paths.add(key)
+   if c['old_path'] is not None: path_value(c['old_path'])
+   require(c['status'] in STATUSES and c['classification'] in {'text','binary','metadata'} and c['shard_kind'] in {'text-diff','binary-patch','metadata'},'invalid change enum')
+   require((c['classification'],c['shard_kind']) in {('text','text-diff'),('binary','binary-patch'),('metadata','metadata')},'invalid classification')
+   for x in (c['old_oid'],c['new_oid']): require(x is None or re.fullmatch(HEX40,x),'invalid oid')
+   for mode in (c['old_mode'],c['new_mode']): require(isinstance(mode,str) and re.fullmatch(r'[0-9]{6}',mode),'invalid mode')
+   require(isinstance(c['sha256'],str) and re.fullmatch(HEX64,c['sha256']) is not None,'invalid checksum'); require(isinstance(c['bytes'],int) and not isinstance(c['bytes'],bool) and c['bytes']>=0,'invalid shard metadata')
+   q=Path(c['shard']); require(not q.is_absolute() and q.parts and q.parts[0]=='shards' and '..' not in q.parts and q.as_posix()==str(q),'invalid shard path'); raw=root/q; require(not raw.is_symlink() and raw.is_file(),'invalid shard file'); f=raw.resolve(); require(root_real in f.parents and f!=root_real,'shard escapes package'); inventory.add(q.as_posix()); data=f.read_bytes(); require(isinstance(c['bytes'],int) and c['bytes']>=0 and len(data)==c['bytes'] and hashlib.sha256(data).hexdigest()==c['sha256'],'shard integrity'); require(len(data)<=lim['max_shard_bytes'],'shard limit'); total+=len(data)
+   require(c['shard_kind']=='text-diff' or not c['hunks'],'unexpected hunks'); require(isinstance(c['hunks'],list),'invalid hunks');
+   for ho,h in enumerate(c['hunks']): require(isinstance(h,dict) and set(h)==HUNK_FIELDS and isinstance(h['id'],str) and re.fullmatch(HEX64,h['id']) and h['ordinal']==ho and all(isinstance(h[k],int) and not isinstance(h[k],bool) and h[k]>=0 for k in ('old_start','old_count','new_start','new_count')),'invalid hunk'); hcount+=1
+  shards=root/'shards'; require(shards.is_dir() and not shards.is_symlink(),'invalid shard directory'); all_entries=list(shards.rglob('*')); require(not any(p.is_symlink() for p in all_entries),'symlink in shard inventory'); actual={p.relative_to(root).as_posix() for p in all_entries if p.is_file()}; require(actual==inventory,'shard inventory mismatch'); require(hcount==counts['hunks'] and isinstance(m['total_bytes'],int) and total==m['total_bytes']<=lim['max_total_bytes'],'total mismatch')
+ except Exception as e: return fail(str(e))
+ return 0
+def fail(msg): print(f'validation failed: {msg}',file=sys.stderr); return 6
+if __name__=='__main__': raise SystemExit(main())

@@ -1,44 +1,98 @@
-#!/usr/bin/env bash
-# Generate a review package: commit list, stat summary, and the net
-# diff with extended context, written to a file the reviewer reads in one
-# call. Using the recorded per-task BASE (not HEAD~1) keeps multi-commit
-# tasks intact.
-#
-# Usage: review-package BASE HEAD [OUTFILE]
-# Default OUTFILE: <repo-root>/.superpowers/sdd/review-<base7>..<head7>.diff
-# (named per range, so a re-review after fixes gets a distinct fresh file).
-set -euo pipefail
-
-if [ $# -lt 2 ] || [ $# -gt 3 ]; then
-  echo "usage: review-package BASE HEAD [OUTFILE]" >&2
-  exit 2
-fi
-
-base=$1
-head=$2
-
-git rev-parse --verify --quiet "$base" >/dev/null || { echo "bad BASE: $base" >&2; exit 2; }
-git rev-parse --verify --quiet "$head" >/dev/null || { echo "bad HEAD: $head" >&2; exit 2; }
-
-if [ $# -eq 3 ]; then
-  out=$3
-else
-  dir=$("$(cd "$(dirname "$0")" && pwd)/sdd-workspace")
-  out="$dir/review-$(git rev-parse --short "$base")..$(git rev-parse --short "$head").diff"
-fi
-
-{
-  echo "# Review package: ${base}..${head}"
-  echo
-  echo "## Commits"
-  git log --oneline "${base}..${head}"
-  echo
-  echo "## Files changed"
-  git diff --stat "${base}..${head}"
-  echo
-  echo "## Diff"
-  git diff -U10 "${base}..${head}"
-} > "$out"
-
-commits=$(git rev-list --count "${base}..${head}")
-echo "wrote ${out}: ${commits} commit(s), $(wc -c < "$out" | tr -d ' ') bytes"
+#!/usr/bin/env python3
+import argparse,base64,hashlib,json,os,re,shutil,subprocess,sys,tempfile
+from pathlib import Path
+MODES={'initial-task','incremental-rereview','final-integration','final-incremental-rereview'}
+def die(msg,code): print(msg,file=sys.stderr); raise SystemExit(code)
+def git(*args,check=True):
+ p=subprocess.run(['git',*args],stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=False)
+ if check and p.returncode: die(p.stderr.decode(errors='replace').strip(),3)
+ return p
+def pathval(raw):
+ try: return {'encoding':'utf8','value':raw.decode('utf8')}
+ except UnicodeDecodeError: return {'encoding':'base64','value':base64.b64encode(raw).decode()}
+def identity(p):
+ return hashlib.sha256(p).hexdigest()
+def main():
+ ap=argparse.ArgumentParser(); ap.add_argument('base'); ap.add_argument('head'); ap.add_argument('outdir',nargs='?'); ap.add_argument('--mode',required=True,choices=sorted(MODES)); ap.add_argument('--previous-review'); ap.add_argument('--max-shard-bytes',type=int,default=102400); ap.add_argument('--max-total-bytes',type=int,default=307200); ap.add_argument('--elevated-reason'); a=ap.parse_args()
+ if a.max_shard_bytes<=0 or a.max_total_bytes<=0: die('limits must be positive',2)
+ try:
+  base=git('rev-parse','--verify',a.base).stdout.decode().strip(); head=git('rev-parse','--verify',a.head).stdout.decode().strip()
+ except SystemExit: raise
+ if git('merge-base','--is-ancestor',base,head,check=False).returncode: die('BASE is not an ancestor of HEAD',3)
+ incremental=a.mode in {'incremental-rereview','final-incremental-rereview'}
+ if incremental:
+  if not a.previous_review: die('incremental mode requires --previous-review',4)
+  try: prev=json.loads(Path(a.previous_review).read_text())
+  except Exception: die('invalid previous review',4)
+  if prev.get('reviewed_head')!=base: die('reviewed_head must equal BASE',4)
+ elif a.previous_review: die('previous review only valid for incremental mode',4)
+ source=None
+ if os.environ.get('SDD_REVIEW_MAX_ELEVATED_BYTES'):
+  x=os.environ['SDD_REVIEW_MAX_ELEVATED_BYTES']
+  if not x.isdigit() or int(x)<=0 or not a.elevated_reason or not a.elevated_reason.strip(): die('elevation requires positive ceiling and reason',4)
+  a.max_total_bytes=int(x); source='SDD_REVIEW_MAX_ELEVATED_BYTES'
+ elif a.elevated_reason: die('elevated reason requires SDD_REVIEW_MAX_ELEVATED_BYTES',4)
+ raw=git('diff','--raw','-z','--no-renames',base,head).stdout; rp=raw.split(b'\0'); records=[]; i=0
+ while i<len(rp)-1:
+  if not rp[i]: i+=1; continue
+  f=rp[i].decode(errors='replace'); i+=1
+  if not f.startswith(':'): continue
+  fields=f[1:].split(); records.append((fields[4],rp[i],fields[0],fields[1],fields[2],fields[3])); i+=1
+ np=git('diff','--name-status','-z','--no-renames',base,head).stdout.split(b'\0'); names=[]; i=0
+ while i<len(np)-1:
+  if np[i]: names.append((np[i].decode(errors='replace'),np[i+1])); i+=2
+  else:i+=1
+ if len(records)!=len(names): die('raw/name-status reconciliation failed',4)
+ for r,n in zip(records,names):
+  if r[0]!=n[0] or r[1]!=n[1]: die('raw/name-status identity mismatch',4)
+ if not records and incremental: die('empty incremental range',3)
+ out=Path(a.outdir or f'.superpowers/sdd/review-{base[:7]}..{head[:7]}'); tmp=None
+ try:
+  out.parent.mkdir(parents=True,exist_ok=True); tmp=Path(tempfile.mkdtemp(prefix=out.name+'.tmp.',dir=out.parent)); (tmp/'shards').mkdir(); changes=[]; total=0; seen=set()
+  for status,p,om,nm,oo,no in records:
+   key=p
+   if key in seen: die('duplicate canonical identity',4)
+   seen.add(key); st={'A':'added','M':'modified','D':'deleted','T':'type-changed'}.get(status,'modified'); oldoid=oo if re.fullmatch(r'[0-9a-f]{40}',oo) else None; newoid=no if re.fullmatch(r'[0-9a-f]{40}',no) else None
+   diff=git('diff','--no-ext-diff','--no-textconv','--binary','-U5',base,head,'--',p).stdout
+   mode_only=om!=nm and not re.search(br'^@@ ',diff,re.M) and not (b'Binary files ' in diff or b'GIT binary patch' in diff)
+   numstat=git('diff','--numstat','--no-renames',base,head,'--',p).stdout.splitlines(); binary=(any(line.startswith(b'-\t-\t') for line in numstat) or b'GIT binary patch' in diff)
+   metadata=st=='type-changed' or om=='160000' or nm=='160000' or mode_only
+   cls='metadata' if metadata else ('binary' if binary else 'text'); kind='metadata' if metadata else ('binary-patch' if binary else 'text-diff'); data=(f'status {st}; mode {om} -> {nm}; old_oid {oldoid or ""}; new_oid {newoid or ""}\n'.encode() if metadata else diff)
+   if len(data)>a.max_shard_bytes: die('shard exceeds limit',5)
+   fid=hashlib.sha256(p+om.encode()+nm.encode()+oo.encode()+no.encode()).hexdigest(); shard=f'shards/{fid[:16]}.bin'; (tmp/shard).write_bytes(data); total+=len(data)
+   if total>a.max_total_bytes: die('package exceeds total limit',5)
+   hunks=[]
+   for ordinal,line in enumerate(re.finditer(br'^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@',diff,re.M)):
+    old_start,old_count,new_start,new_count=[int(x or 1) for x in line.groups()]; token=f'{fid}:{old_start},{old_count}:{new_start},{new_count}:{ordinal}'; hunks.append({'id':hashlib.sha256(token.encode()).hexdigest(),'old_start':old_start,'old_count':old_count,'new_start':new_start,'new_count':new_count,'ordinal':ordinal})
+   changes.append({'id':fid,'status':st,'path':pathval(p),'_raw_path':p,'old_path':None,'old_mode':om,'new_mode':nm,'old_oid':oldoid,'new_oid':newoid,'classification':cls,'shard':shard,'shard_kind':kind,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),'hunks':hunks})
+  changes.sort(key=lambda c:c['_raw_path']); [c.update(ordinal=i) for i,c in enumerate(changes)]
+  for c in changes: del c['_raw_path']
+  commits=[]
+  for c in git('rev-list','--reverse',f'{base}..{head}').stdout.decode().splitlines():
+   z=git('show','-s','--format=%H%x00%an%x00%ae%x00%s',c).stdout.split(b'\0'); commits.append({'sha':z[0].decode(),'author':z[1].decode(errors='replace'),'email':z[2].decode(errors='replace'),'subject':z[3].decode(errors='replace')})
+  counts={'raw':len(records),'name_status':len(names),'changes':len(changes),'shards':len(changes),'hunks':sum(len(c['hunks']) for c in changes)}
+  manifest={'version':1,'mode':a.mode,'base_sha':base,'head_sha':head,'ancestral':True,'previous_review':a.previous_review if incremental else None,'reviewed_head':base if incremental else None,'limits':{'max_shard_bytes':a.max_shard_bytes,'max_total_bytes':a.max_total_bytes,'elevated_reason':a.elevated_reason,'elevated_ceiling_source':source},'commits':commits,'changes':changes,'counts':counts,'total_bytes':total}
+  (tmp/'manifest.json').write_text(json.dumps(manifest,indent=2,sort_keys=True)+'\n')
+  index=['# Review package index','', 'Each change lists its canonical path, shard, and every hunk ID.']
+  for c in changes:
+   path=json.dumps(c['path'],sort_keys=True,separators=(',',':'))
+   hunks=','.join(h['id'] for h in c['hunks']) or '-'
+   index.append(f'- change {c["ordinal"]}: path={path} shard={c["shard"]} hunks={hunks}')
+  (tmp/'index.md').write_text('\n'.join(index)+'\n')
+  validator=Path(__file__).with_name('review-package-validator'); r=subprocess.run([str(validator),str(tmp)],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+  if r.returncode: die(r.stderr.decode(),6)
+  if os.environ.get('SDD_REVIEW_INJECT_PUBLICATION_FAILURE'): die('injected publication failure',7)
+  # os.replace is atomic and preserves an existing destination if replacement fails.
+  try:
+   os.replace(tmp,out)
+  except Exception as e:
+   shutil.rmtree(tmp,ignore_errors=True)
+   die(f'publication failed: {e}',7)
+  print(f'{out}\npackage: {out}\nmanifest: {out}/manifest.json\nfile_count: {len(changes)}\nhunk_count: {counts["hunks"]}\ntotal_bytes: {total}')
+ except SystemExit:
+   if tmp is not None: shutil.rmtree(tmp,ignore_errors=True)
+   raise
+ except Exception as e:
+   if tmp is not None: shutil.rmtree(tmp,ignore_errors=True)
+   die(str(e),6)
+if __name__=='__main__': main()
