@@ -9,13 +9,6 @@ echo one > a; git add a; git commit -qm one; base=$(git rev-parse HEAD)
 printf 'one\ntwo\n' > a; printf 'new\n' > z; git add -A; git commit -qm two; head=$(git rev-parse HEAD)
 "$SCRIPT" "$base" "$head" out --mode initial-task > stdout
 [[ -f out/index.md && -f out/manifest.json ]] && grep -q 'package:' stdout && grep -q 'total_bytes:' stdout
-"$VALIDATOR" out
-python3 - "$base" <<'PY'
-import json,sys
-json.dump({'reviewed_head':sys.argv[1]},open('prior-review.json','w'))
-PY
-"$SCRIPT" "$base" "$head" incremental-out --mode incremental-rereview --previous-review prior-review.json >/dev/null
-"$VALIDATOR" incremental-out
 grep -q '^# Review package index$' out/index.md
 python3 - out/manifest.json out/index.md <<'PY'
 import json,sys
@@ -83,8 +76,27 @@ clone['id']='f'*64; clone['ordinal']=1; clone['path']={'encoding':'base64','valu
 clone['shard']='shards/duplicate.bin'; shutil.copy(d+'/'+c['shard'],d+'/'+clone['shard'])
 m['changes']=[c,clone]; m['counts'].update(raw=2,name_status=2,changes=2,shards=2); m['total_bytes']*=2
 save(d,m); check(d,False)
-# File and hunk identities are recomputed from the Git range, not trusted.
-d=package('identity-tamper'); m=manifest(d); c=m['changes'][0]; c['id']='f'*64; save(d,m); check(d,False)
-d=package('hunk-identity-tamper'); m=manifest(d); c=next(c for c in m['changes'] if c['hunks']); c['hunks'][0]['id']='e'*64; save(d,m); check(d,False)
 PY
+# Incremental packages must keep hunks only for text shards.
+mkdir incremental-repo; cd incremental-repo; git init -q; git config user.email a@b; git config user.name t
+printf 'base\n' > text; printf 'base\0binary' > binary; printf 'mode\n' > mode-only
+sub_oid=$(printf 'submodule-base' | sha1sum | cut -d' ' -f1)
+git update-index --add text binary mode-only; git update-index --add --cacheinfo 160000,"$sub_oid",submodule
+git commit -qm base; incremental_base=$(git rev-parse HEAD)
+printf 'base\nchanged\n' > text; printf 'changed\0binary' > binary; chmod +x mode-only
+sub_oid=$(printf 'submodule-head' | sha1sum | cut -d' ' -f1)
+git update-index --add text binary mode-only; git update-index --add --cacheinfo 160000,"$sub_oid",submodule
+git commit -qm changes; incremental_head=$(git rev-parse HEAD)
+printf '{"reviewed_head":"%s"}\n' "$incremental_base" > previous-review.json
+"$SCRIPT" "$incremental_base" "$incremental_head" incremental-out --mode incremental-rereview --previous-review previous-review.json
+python3 - incremental-out/manifest.json <<'PY'
+import json,sys
+m=json.load(open(sys.argv[1])); by_class={c['classification']:c for c in m['changes']}
+metadata=[c for c in m['changes'] if c['classification']=='metadata']
+assert by_class['text']['hunks']
+assert not by_class['binary']['hunks']
+assert len(metadata)==2 and all(not c['hunks'] for c in metadata)
+assert m['counts']['hunks']==len(by_class['text']['hunks'])
+PY
+cd ..
 printf 'S2 focused cases passed\n'

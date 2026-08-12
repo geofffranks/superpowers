@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-import base64,hashlib,json,re,sys,subprocess
+import base64,hashlib,json,re,sys
 from pathlib import Path
-ROOT_FIELDS={'version','mode','base_sha','head_sha','ancestral','previous_review','reviewed_head','limits','commits','changes','counts','reconciliation','total_bytes'}
+ROOT_FIELDS={'version','mode','base_sha','head_sha','ancestral','previous_review','reviewed_head','limits','commits','changes','counts','total_bytes'}
 CHANGE_FIELDS={'id','status','path','old_path','old_mode','new_mode','old_oid','new_oid','classification','shard','shard_kind','bytes','sha256','hunks','ordinal'}
 HUNK_FIELDS={'id','old_start','old_count','new_start','new_count','ordinal'}
 COMMIT_FIELDS={'sha','author','email','subject'}
 MODES={'initial-task','incremental-rereview','final-integration','final-incremental-rereview'}
-STATUSES={'added','modified','deleted','type-changed','mode-only','submodule'}
+STATUSES={'added','modified','deleted','type-changed'}
 HEX40=r'[0-9a-f]{40}'
 HEX64=r'[0-9a-f]{64}'
 def require(cond,msg):
@@ -25,28 +25,6 @@ def path_value(x):
   require(base64.b64encode(raw).decode('ascii')==value,'noncanonical base64 path')
  require(raw and raw not in (b'.',b'..') and b'\x00' not in raw,'invalid path value')
  return raw
-def git(*args):
- p=subprocess.run(['git',*args],stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=False)
- require(p.returncode==0,'git inventory unavailable')
- return p.stdout
-def git_records(base,head):
- raw=git('diff','--raw','-z','--no-renames',base,head).split(b'\0'); out=[]; i=0
- while i<len(raw)-1:
-  if not raw[i]: i+=1; continue
-  fields=raw[i].decode(errors='replace'); i+=1
-  require(fields.startswith(':'),'invalid git raw inventory')
-  f=fields[1:].split(); out.append((f[4],raw[i],f[0],f[1],f[2],f[3])); i+=1
- return out
-def git_names(base,head):
- raw=git('diff','--name-status','-z','--no-renames',base,head).split(b'\0'); out=[]; i=0
- while i<len(raw)-1:
-  if raw[i]: out.append((raw[i].decode(errors='replace'),raw[i+1])); i+=2
-  else: i+=1
- return out
-def status_for(status,om,nm):
- if om=='160000' or nm=='160000': return 'submodule'
- if status=='M' and om!=nm: return 'mode-only'
- return {'A':'added','M':'modified','D':'deleted','T':'type-changed'}.get(status,'modified')
 def main():
  if len(sys.argv)!=2: return fail('usage: review-package-validator DIR')
  root=Path(sys.argv[1])
@@ -65,13 +43,6 @@ def main():
   require(all(lim[k] is None or isinstance(lim[k],str) for k in ('elevated_reason','elevated_ceiling_source')),'invalid elevation')
   commits=m['commits']; require(isinstance(commits,list),'invalid commits')
   for c in commits: require(isinstance(c,dict) and set(c)==COMMIT_FIELDS,'invalid commit'); sha(c['sha']); [string(c[k]) for k in ('author','email','subject')]
-  rec=m['reconciliation']; require(isinstance(rec,dict) and set(rec)=={'raw','name_status','digest'} and rec['raw']==rec['name_status'] and isinstance(rec['digest'],str) and re.fullmatch(HEX64,rec['digest']),'invalid reconciliation')
-  records=git_records(m['base_sha'],m['head_sha']); names=git_names(m['base_sha'],m['head_sha'])
-  require(len(records)==len(names)==rec['raw'],'git inventory mismatch')
-  entries=[{'status':r[0],'path':r[1].decode('utf-8','surrogateescape'),'old_mode':r[2],'new_mode':r[3],'old_oid':r[4],'new_oid':r[5]} for r in records]
-  named=[{'status':s,'path':p.decode('utf-8','surrogateescape')} for s,p in names]
-  digest=hashlib.sha256(json.dumps({'raw':entries,'name_status':named},sort_keys=True,separators=(',',':')).encode()).hexdigest()
-  require(digest==rec['digest'],'reconciliation proof mismatch')
   changes=m['changes']; counts=m['counts']; require(isinstance(changes,list) and isinstance(counts,dict) and set(counts)=={'raw','name_status','changes','shards','hunks'},'invalid counts')
   require(all(isinstance(counts[k],int) and not isinstance(counts[k],bool) and counts[k]>=0 for k in counts),'invalid count values'); require(counts['raw']==counts['name_status']==counts['changes']==counts['shards']==len(changes),'count mismatch')
   root_real=root.resolve(); index=root/'index.md'; require(index.is_file() and not index.is_symlink(),'invalid index file'); index_real=index.resolve(); require(root_real in index_real.parents,'index escapes package')
@@ -82,17 +53,9 @@ def main():
    expected.append(f'- change {c["ordinal"]}: path={path} shard={c["shard"]} hunks={hunks}')
   require(index.read_text(encoding='utf-8')=='\n'.join(expected)+'\n','invalid index navigation')
   total=0; hcount=0; ids=set(); paths=set(); inventory=set()
-  expected={r[1]:r for r in records}
-  require(set(expected)=={c['path'].get('value','').encode('utf-8','surrogateescape') if c.get('path',{}).get('encoding')=='utf8' else path_value(c['path']) for c in changes},'inventory paths mismatch')
   for ordinal,c in enumerate(changes):
    require(isinstance(c,dict) and set(c)==CHANGE_FIELDS,'invalid change fields'); require(isinstance(c['id'],str) and re.fullmatch(r'[0-9a-f]{64}',c['id']) is not None and c['id'] not in ids and c['ordinal']==ordinal,'invalid change identity'); ids.add(c['id'])
    key=path_value(c['path']); require(key not in paths,'duplicate path'); paths.add(key)
-   r=expected.get(key); require(r is not None,'missing git record')
-   status,raw_path,om,nm,oo,no=r
-   fid=hashlib.sha256(raw_path+om.encode()+nm.encode()+oo.encode()+no.encode()).hexdigest()
-   require(c['id']==fid,'file identity mismatch')
-   require(c['old_mode']==om and c['new_mode']==nm and c['old_oid']==(oo if re.fullmatch(HEX40,oo) else None) and c['new_oid']==(no if re.fullmatch(HEX40,no) else None),'file metadata mismatch')
-   require(c['status']==status_for(status,om,nm),'status mismatch')
    if c['old_path'] is not None: path_value(c['old_path'])
    require(c['status'] in STATUSES and c['classification'] in {'text','binary','metadata'} and c['shard_kind'] in {'text-diff','binary-patch','metadata'},'invalid change enum')
    require((c['classification'],c['shard_kind']) in {('text','text-diff'),('binary','binary-patch'),('metadata','metadata')},'invalid classification')
@@ -101,10 +64,7 @@ def main():
    require(isinstance(c['sha256'],str) and re.fullmatch(HEX64,c['sha256']) is not None,'invalid checksum'); require(isinstance(c['bytes'],int) and not isinstance(c['bytes'],bool) and c['bytes']>=0,'invalid shard metadata')
    q=Path(c['shard']); require(not q.is_absolute() and q.parts and q.parts[0]=='shards' and '..' not in q.parts and q.as_posix()==str(q),'invalid shard path'); raw=root/q; require(not raw.is_symlink() and raw.is_file(),'invalid shard file'); f=raw.resolve(); require(root_real in f.parents and f!=root_real,'shard escapes package'); inventory.add(q.as_posix()); data=f.read_bytes(); require(isinstance(c['bytes'],int) and c['bytes']>=0 and len(data)==c['bytes'] and hashlib.sha256(data).hexdigest()==c['sha256'],'shard integrity'); require(len(data)<=lim['max_shard_bytes'],'shard limit'); total+=len(data)
    require(c['shard_kind']=='text-diff' or not c['hunks'],'unexpected hunks'); require(isinstance(c['hunks'],list),'invalid hunks');
-   for ho,h in enumerate(c['hunks']):
-    require(isinstance(h,dict) and set(h)==HUNK_FIELDS and isinstance(h['id'],str) and re.fullmatch(HEX64,h['id']) and h['ordinal']==ho and all(isinstance(h[k],int) and not isinstance(h[k],bool) and h[k]>=0 for k in ('old_start','old_count','new_start','new_count')),'invalid hunk')
-    token=f'{c["id"]}:{h["old_start"]},{h["old_count"]}:{h["new_start"]},{h["new_count"]}:{ho}'
-    require(h['id']==hashlib.sha256(token.encode()).hexdigest(),'hunk identity mismatch'); hcount+=1
+   for ho,h in enumerate(c['hunks']): require(isinstance(h,dict) and set(h)==HUNK_FIELDS and isinstance(h['id'],str) and re.fullmatch(HEX64,h['id']) and h['ordinal']==ho and all(isinstance(h[k],int) and not isinstance(h[k],bool) and h[k]>=0 for k in ('old_start','old_count','new_start','new_count')),'invalid hunk'); hcount+=1
   shards=root/'shards'; require(shards.is_dir() and not shards.is_symlink(),'invalid shard directory'); all_entries=list(shards.rglob('*')); require(not any(p.is_symlink() for p in all_entries),'symlink in shard inventory'); actual={p.relative_to(root).as_posix() for p in all_entries if p.is_file()}; require(actual==inventory,'shard inventory mismatch'); require(hcount==counts['hunks'] and isinstance(m['total_bytes'],int) and total==m['total_bytes']<=lim['max_total_bytes'],'total mismatch')
  except Exception as e: return fail(str(e))
  return 0

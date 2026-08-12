@@ -12,10 +12,6 @@ def pathval(raw):
  except UnicodeDecodeError: return {'encoding':'base64','value':base64.b64encode(raw).decode()}
 def identity(p):
  return hashlib.sha256(p).hexdigest()
-def reconciliation(raw, names):
- entries=[{'status':r[0],'path':r[1].decode('utf-8','surrogateescape'),'old_mode':r[2],'new_mode':r[3],'old_oid':r[4],'new_oid':r[5]} for r in raw]
- named=[{'status':s,'path':p.decode('utf-8','surrogateescape')} for s,p in names]
- return {'raw':len(raw),'name_status':len(names),'digest':hashlib.sha256(json.dumps({'raw':entries,'name_status':named},sort_keys=True,separators=(',',':')).encode()).hexdigest()}
 def main():
  ap=argparse.ArgumentParser(); ap.add_argument('base'); ap.add_argument('head'); ap.add_argument('outdir',nargs='?'); ap.add_argument('--mode',required=True,choices=sorted(MODES)); ap.add_argument('--previous-review'); ap.add_argument('--max-shard-bytes',type=int,default=102400); ap.add_argument('--max-total-bytes',type=int,default=307200); ap.add_argument('--elevated-reason'); a=ap.parse_args()
  if a.max_shard_bytes<=0 or a.max_total_bytes<=0: die('limits must be positive',2)
@@ -50,17 +46,13 @@ def main():
  for r,n in zip(records,names):
   if r[0]!=n[0] or r[1]!=n[1]: die('raw/name-status identity mismatch',4)
  if not records and incremental: die('empty incremental range',3)
- proof=reconciliation(records,names)
  out=Path(a.outdir or f'.superpowers/sdd/review-{base[:7]}..{head[:7]}'); tmp=None
  try:
   out.parent.mkdir(parents=True,exist_ok=True); tmp=Path(tempfile.mkdtemp(prefix=out.name+'.tmp.',dir=out.parent)); (tmp/'shards').mkdir(); changes=[]; total=0; seen=set()
   for status,p,om,nm,oo,no in records:
    key=p
    if key in seen: die('duplicate canonical identity',4)
-   seen.add(key); st={'A':'added','M':'modified','D':'deleted','T':'type-changed'}.get(status,'modified')
-   if om=='160000' or nm=='160000': st='submodule'
-   elif status=='M' and om!=nm: st='mode-only'
-   oldoid=oo if re.fullmatch(r'[0-9a-f]{40}',oo) else None; newoid=no if re.fullmatch(r'[0-9a-f]{40}',no) else None
+   seen.add(key); st={'A':'added','M':'modified','D':'deleted','T':'type-changed'}.get(status,'modified'); oldoid=oo if re.fullmatch(r'[0-9a-f]{40}',oo) else None; newoid=no if re.fullmatch(r'[0-9a-f]{40}',no) else None
    diff=git('diff','--no-ext-diff','--no-textconv','--binary','-U5',base,head,'--',p).stdout
    mode_only=om!=nm and not re.search(br'^@@ ',diff,re.M) and not (b'Binary files ' in diff or b'GIT binary patch' in diff)
    numstat=git('diff','--numstat','--no-renames',base,head,'--',p).stdout.splitlines(); binary=(any(line.startswith(b'-\t-\t') for line in numstat) or b'GIT binary patch' in diff)
@@ -70,7 +62,7 @@ def main():
    fid=hashlib.sha256(p+om.encode()+nm.encode()+oo.encode()+no.encode()).hexdigest(); shard=f'shards/{fid[:16]}.bin'; (tmp/shard).write_bytes(data); total+=len(data)
    if total>a.max_total_bytes: die('package exceeds total limit',5)
    hunks=[]
-   if kind=='text-diff':
+   if cls=='text':
     for ordinal,line in enumerate(re.finditer(br'^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@',diff,re.M)):
      old_start,old_count,new_start,new_count=[int(x or 1) for x in line.groups()]; token=f'{fid}:{old_start},{old_count}:{new_start},{new_count}:{ordinal}'; hunks.append({'id':hashlib.sha256(token.encode()).hexdigest(),'old_start':old_start,'old_count':old_count,'new_start':new_start,'new_count':new_count,'ordinal':ordinal})
    changes.append({'id':fid,'status':st,'path':pathval(p),'_raw_path':p,'old_path':None,'old_mode':om,'new_mode':nm,'old_oid':oldoid,'new_oid':newoid,'classification':cls,'shard':shard,'shard_kind':kind,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),'hunks':hunks})
@@ -80,7 +72,7 @@ def main():
   for c in git('rev-list','--reverse',f'{base}..{head}').stdout.decode().splitlines():
    z=git('show','-s','--format=%H%x00%an%x00%ae%x00%s',c).stdout.split(b'\0'); commits.append({'sha':z[0].decode(),'author':z[1].decode(errors='replace'),'email':z[2].decode(errors='replace'),'subject':z[3].decode(errors='replace')})
   counts={'raw':len(records),'name_status':len(names),'changes':len(changes),'shards':len(changes),'hunks':sum(len(c['hunks']) for c in changes)}
-  manifest={'version':1,'mode':a.mode,'base_sha':base,'head_sha':head,'ancestral':True,'previous_review':a.previous_review if incremental else None,'reviewed_head':base if incremental else None,'limits':{'max_shard_bytes':a.max_shard_bytes,'max_total_bytes':a.max_total_bytes,'elevated_reason':a.elevated_reason,'elevated_ceiling_source':source},'commits':commits,'changes':changes,'counts':counts,'reconciliation':proof,'total_bytes':total}
+  manifest={'version':1,'mode':a.mode,'base_sha':base,'head_sha':head,'ancestral':True,'previous_review':a.previous_review if incremental else None,'reviewed_head':base if incremental else None,'limits':{'max_shard_bytes':a.max_shard_bytes,'max_total_bytes':a.max_total_bytes,'elevated_reason':a.elevated_reason,'elevated_ceiling_source':source},'commits':commits,'changes':changes,'counts':counts,'total_bytes':total}
   (tmp/'manifest.json').write_text(json.dumps(manifest,indent=2,sort_keys=True)+'\n')
   index=['# Review package index','', 'Each change lists its canonical path, shard, and every hunk ID.']
   for c in changes:
