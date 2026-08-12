@@ -9,6 +9,13 @@ echo one > a; git add a; git commit -qm one; base=$(git rev-parse HEAD)
 printf 'one\ntwo\n' > a; printf 'new\n' > z; git add -A; git commit -qm two; head=$(git rev-parse HEAD)
 "$SCRIPT" "$base" "$head" out --mode initial-task > stdout
 [[ -f out/index.md && -f out/manifest.json ]] && grep -q 'package:' stdout && grep -q 'total_bytes:' stdout
+"$VALIDATOR" out
+python3 - "$base" <<'PY'
+import json,sys
+json.dump({'reviewed_head':sys.argv[1]},open('prior-review.json','w'))
+PY
+"$SCRIPT" "$base" "$head" incremental-out --mode incremental-rereview --previous-review prior-review.json >/dev/null
+"$VALIDATOR" incremental-out
 grep -q '^# Review package index$' out/index.md
 python3 - out/manifest.json out/index.md <<'PY'
 import json,sys

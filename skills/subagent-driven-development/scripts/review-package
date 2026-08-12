@@ -70,8 +70,9 @@ def main():
    fid=hashlib.sha256(p+om.encode()+nm.encode()+oo.encode()+no.encode()).hexdigest(); shard=f'shards/{fid[:16]}.bin'; (tmp/shard).write_bytes(data); total+=len(data)
    if total>a.max_total_bytes: die('package exceeds total limit',5)
    hunks=[]
-   for ordinal,line in enumerate(re.finditer(br'^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@',diff,re.M)):
-    old_start,old_count,new_start,new_count=[int(x or 1) for x in line.groups()]; token=f'{fid}:{old_start},{old_count}:{new_start},{new_count}:{ordinal}'; hunks.append({'id':hashlib.sha256(token.encode()).hexdigest(),'old_start':old_start,'old_count':old_count,'new_start':new_start,'new_count':new_count,'ordinal':ordinal})
+   if kind=='text-diff':
+    for ordinal,line in enumerate(re.finditer(br'^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@',diff,re.M)):
+     old_start,old_count,new_start,new_count=[int(x or 1) for x in line.groups()]; token=f'{fid}:{old_start},{old_count}:{new_start},{new_count}:{ordinal}'; hunks.append({'id':hashlib.sha256(token.encode()).hexdigest(),'old_start':old_start,'old_count':old_count,'new_start':new_start,'new_count':new_count,'ordinal':ordinal})
    changes.append({'id':fid,'status':st,'path':pathval(p),'_raw_path':p,'old_path':None,'old_mode':om,'new_mode':nm,'old_oid':oldoid,'new_oid':newoid,'classification':cls,'shard':shard,'shard_kind':kind,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),'hunks':hunks})
   changes.sort(key=lambda c:c['_raw_path']); [c.update(ordinal=i) for i,c in enumerate(changes)]
   for c in changes: del c['_raw_path']
