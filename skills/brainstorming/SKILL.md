@@ -138,6 +138,34 @@ The design doc ends with an `## Implementation Tasks` checklist — this is what
 
 Wrap the work in the fixed **Setup** (first) and **Code Review** + **Finalize** (last two) tasks per `herdle-tk-artifacts`. Follow that skill for the exact task contents and lifecycle stamping — don't restate them here.
 
+Each implementation task is one independently testable behavioral slice. When a task combines independently testable behaviors, split it before dispatch; also split unrelated behaviors or subsystems, unresolved design with implementation, or work that cannot state one focused test intent and one done condition. More than four production files, multiple package roots, or refactor-plus-behavior are warning thresholds: keep a genuinely cohesive multi-file slice only with a non-empty **Cohesion override** explaining why; file count is not a hard failure by itself. Preserve deferred review intent for the later final integration review.
+
+Use this bounded recipe for every task:
+
+```markdown
+### Task 1: Implement bounded parser behavior
+
+**Files:**
+- Modify: `src/parser.py`
+- Test: `tests/test_parser.py`
+
+**Focused behavior:** Parse one bounded task into durable artifacts.
+
+**Test intent:** Verify valid input is accepted and invalid input is rejected precisely.
+
+**Inherited interfaces:**
+- None
+
+**Out of scope:**
+- Unrelated Markdown extensions
+
+**Done when:** The parser publishes the brief and manifest together.
+
+**Review intent:** Verify task-local parsing and defer branch-wide integration review.
+
+**Cohesion override:** Keep the parser and its focused test together because they form one independently testable behavior.
+```
+
 **Spec Self-Review:**
 After writing the spec document, look at it with fresh eyes:
 

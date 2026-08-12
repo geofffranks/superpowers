@@ -21,6 +21,8 @@ Live in `tests/`. Currently:
 
 Run plugin tests via the relevant directory's `run-*.sh` or `npm test`.
 
+For the SDD workflow contract, run the focused static test with `tests/claude-code/test-subagent-driven-development.sh`; the registered fast runner is `tests/claude-code/run-skill-tests.sh --test test-subagent-driven-development.sh`. The integration contract fixture is `tests/claude-code/test-subagent-driven-development-integration.sh` (slow; use `--integration`).
+
 ## Skill behavior evals
 
 Live in `evals/`. Drill is the harness; scenarios live at `evals/scenarios/*.yaml`. See `evals/README.md` for setup. Quick start:

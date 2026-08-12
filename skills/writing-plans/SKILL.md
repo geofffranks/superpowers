@@ -104,19 +104,32 @@ include this section.]
 
 ## Task Structure
 
+Every task is one independently testable behavioral slice. Split before dispatch when a task combines independently testable behaviors, unrelated subsystems, unresolved design with implementation, or cannot state one focused test intent and one done condition. More than four production files, multiple package roots, or refactor-plus-behavior are warning thresholds, not automatic failure; a genuinely cohesive multi-file slice crossing one must include a non-empty cohesion override explaining the boundary. File count is not a hard failure by itself. Preserve review intent for the later final integration review, and do not paste prior plan/history into dispatch prompts.
+
+Use this S1-compatible recipe for every task:
+
 ````markdown
-### Task N: [Component Name]
+### Task 1: Implement bounded parser behavior
 
 **Files:**
-- Create: `exact/path/to/file.py`
-- Modify: `exact/path/to/existing.py:123-145`
-- Test: `tests/exact/path/to/test.py`
+- Modify: `src/parser.py`
+- Test: `tests/test_parser.py`
 
-**Interfaces:**
-- Consumes: [what this task uses from earlier tasks — exact signatures]
-- Produces: [what later tasks rely on — exact function names, parameter
-  and return types. A task's implementer sees only their own task; this
-  block is how they learn the names and types neighboring tasks use.]
+**Focused behavior:** Parse one bounded task into durable artifacts.
+
+**Test intent:** Verify valid input is accepted and invalid input is rejected precisely.
+
+**Inherited interfaces:**
+- None
+
+**Out of scope:**
+- Unrelated Markdown extensions
+
+**Done when:** The parser publishes the brief and manifest together.
+
+**Review intent:** Verify task-local parsing and defer branch-wide integration review.
+
+**Cohesion override:** Keep the parser and its focused test together because they form one independently testable behavior.
 
 - [ ] **Step 1: Write the failing test**
 

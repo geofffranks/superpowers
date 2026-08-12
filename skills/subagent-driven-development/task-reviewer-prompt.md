@@ -11,8 +11,7 @@ Subagent (reviewer):
   model: [optional override — per SKILL.md Model Selection; the definition
          defaults to default_model:full]
   prompt: |
-    Review this task's implementation. This is a task-scoped gate, not a
-    merge review — a broad whole-branch review happens separately.
+    Review this task's implementation. This is an independent task-scoped gate, not a merge review — a fresh integration-focused final review happens separately. Use review mode `initial-task` or `incremental-rereview` exactly as supplied by the controller.
 
     ## What Was Requested
 

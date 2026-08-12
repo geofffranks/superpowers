@@ -14,8 +14,10 @@ Subagent (implementer):
 
     ## Task
 
-    Read your task brief first: [BRIEF_FILE]
-    It is your single source of requirements, with exact values to use verbatim.
+    Read your task brief/manifest first: [BRIEF_FILE]
+    It is your single source of requirements, with exact values to use verbatim. Do not ask the controller to paste task text or prior-task history.
+
+    Follow Orient → RED/GREEN → Verify → Report. Begin exploration with the named files and direct dependencies. Before any out-of-scope reading, state one unresolved question and perform one targeted lookup; after two targeted searches or three additional reads fail to resolve it, return NEEDS_CONTEXT.
 
     ## Context
 

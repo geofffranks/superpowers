@@ -5,7 +5,17 @@ description: Use when executing implementation plans with independent tasks in t
 
 # Subagent-Driven Development
 
-Execute plan by dispatching a fresh implementer subagent per task, a task review (spec compliance + code quality) after each, and a broad whole-branch review at the end.
+Execute plan by dispatching a fresh implementer subagent per task, one independent dual-verdict task review after each, and exactly one fresh integration-focused final review at the end.
+
+## Workflow contract
+
+- Work is path-scoped: dispatch the task brief/manifest, implementer report, and indexed review-package paths; never paste task text, prior-task history, or exact brief values into a handoff.
+- Each substantive task follows Orient → RED/GREEN → Verify → Report, then receives one independent review with both spec-compliance and quality verdicts.
+- Review modes are exactly `initial-task`, `incremental-rereview`, `final-integration`, and `final-incremental-rereview`.
+- Initial review covers every changed hunk in range. Incremental rereview starts at the previously reviewed head and covers only the descendant range plus unresolved Critical/Important findings. Indexed packages are complete, never sampled.
+- Critical/Important findings are handled as one complete batch by one fresh bounded fixer; rereview only follows a relevant descendant change. Minor findings feed the final review. Evidence-only controller-verifiable corrections do not trigger code rereview.
+- The final review is exactly one fresh branch-level `final-integration` review, with at most one `final-incremental-rereview` when Critical/Important findings cause branch changes. It checks cross-task contracts, systemic risk, cumulative complexity, unresolved Minors, and unattributed requirements.
+- Tool output is bounded: use byte/character language, max 20 grep results, one concrete concept per search, ranged reads for large artifacts, index-first complete-shard navigation, no repeated unchanged reads, concise test evidence, raw output paths when needed, and narrow recovery after oversized results. Use glob for discovery, bounded grep for structured searches, rtk grep for broad plain text, ranged file_read for source/shards, and RTK wrappers for supported tests.
 
 **Why subagents:** You delegate tasks to specialized agents with isolated context. By precisely crafting their instructions and context, you ensure they stay focused and succeed at their task. They should never inherit your session's context or history — you construct exactly what they need. This also preserves your own context for coordination work.
 
@@ -192,7 +202,7 @@ final whole-branch review. When you fill a reviewer template:
 - A dispatch prompt describes one task, not the session's history. Do not
   paste accumulated prior-task summaries ("state after Tasks 1-3") into
   later dispatches — a real session's dispatch hit 42k chars of which 99%
-  was pasted history. A fresh subagent needs its task, the interfaces it
+  was copied history. A fresh subagent needs its task, the interfaces it
   touches, and the global constraints. Nothing else.
 - Dispatch fix subagents for Critical and Important findings. Record Minor
   findings in the progress ledger as you go, and point the final
@@ -352,7 +362,7 @@ Done!
 
 **Efficiency gains:**
 - Controller curates exactly what context is needed; bulk artifacts move
-  as files, not pasted text
+  as files, not inline content
 - Subagent gets complete information upfront
 - Questions surfaced before work begins (not after)
 
@@ -399,7 +409,7 @@ Done!
 - Don't rush them into implementation
 
 **If reviewer finds issues:**
-- Implementer (same subagent) fixes them
+- One fresh bounded fixer handles the complete Critical/Important batch
 - Reviewer reviews again
 - Repeat until approved
 - Don't skip the re-review

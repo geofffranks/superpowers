@@ -23,11 +23,11 @@ echo "========================================"
 echo ""
 echo "This test executes a real plan using the skill and verifies:"
 echo "  1. Plan is read once (not per task)"
-echo "  2. Full task text provided to subagents"
+echo "  2. Task brief, report, and review-package paths provided to subagents"
 echo "  3. Subagents perform self-review"
-echo "  4. Spec compliance review before code quality"
-echo "  5. Review loops when issues found"
-echo "  6. Spec reviewer reads code independently"
+echo "  4. One independent dual-verdict task review"
+echo "  5. Incremental rereview follows relevant descendant changes"
+echo "  6. One fresh final integration review"
 echo ""
 echo "WARNING: This test may take 10-30 minutes to complete."
 echo ""
@@ -136,10 +136,11 @@ I want you to execute the implementation plan at docs/superpowers/plans/implemen
 
 IMPORTANT: Follow the skill exactly. I will be verifying that you:
 1. Read the plan once at the beginning
-2. Provide full task text to subagents (don't make them read files)
+2. Dispatch task brief, report, and review-package paths (never paste task history)
 3. Ensure subagents do self-review before reporting
-4. Run spec compliance review before code quality review
-5. Use review loops when issues are found
+4. Run one independent dual-verdict task review
+5. Use incremental rereview only for relevant descendant changes
+6. Run one fresh final integration review
 
 Begin now. Execute the plan.
 EOF
@@ -150,10 +151,11 @@ PROMPT="Execute the implementation plan at docs/superpowers/plans/implementation
 
 IMPORTANT: Follow the skill exactly. I will be verifying that you:
 1. Read the plan once at the beginning
-2. Provide full task text to subagents (don't make them read files)
+2. Dispatch task brief, report, and review-package paths (never paste task history)
 3. Ensure subagents do self-review before reporting
-4. Run spec compliance review before code quality review
-5. Use review loops when issues are found
+4. Run one independent dual-verdict task review
+5. Use incremental rereview only for relevant descendant changes
+6. Run one fresh final integration review
 
 Begin now. Execute the plan."
 
@@ -316,10 +318,10 @@ if [ $FAILED -eq 0 ]; then
     echo ""
     echo "The subagent-driven-development skill correctly:"
     echo "  ✓ Reads plan once at start"
-    echo "  ✓ Provides full task text to subagents"
+    echo "  ✓ Dispatches artifact paths without pasted task history"
     echo "  ✓ Enforces self-review"
-    echo "  ✓ Runs spec compliance before code quality"
-    echo "  ✓ Spec reviewer verifies independently"
+    echo "  ✓ Runs one independent dual-verdict task review"
+    echo "  ✓ Runs one fresh final integration review"
     echo "  ✓ Produces working implementation"
     exit 0
 else

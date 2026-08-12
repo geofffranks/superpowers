@@ -75,6 +75,8 @@ done
 tests=(
     "test-worktree-path-policy.sh"
     "test-sdd-workspace.sh"
+    "test-review-package.sh"
+    "test-sdd-coordination.sh"
     "test-subagent-driven-development.sh"
 )
 

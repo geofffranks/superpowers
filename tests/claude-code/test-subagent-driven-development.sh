@@ -43,8 +43,143 @@ fi
 
 echo ""
 
-# Test 1: Verify skill can be loaded
-echo "Test 1: Skill loading..."
+# Test 1: Bounded task-authoring contract
+# Keep each recipe assertion tied to its owning skill so a matching phrase in
+# another contract cannot mask a missing requirement.
+echo "Test 1: Bounded task-authoring contract..."
+BRAINSTORMING_AUTHORING="$SCRIPT_DIR/../../skills/brainstorming/SKILL.md"
+WRITING_PLANS_AUTHORING="$SCRIPT_DIR/../../skills/writing-plans/SKILL.md"
+SKILL_FILE="$SCRIPT_DIR/../../skills/subagent-driven-development/SKILL.md"
+IMPLEMENTER_PROMPT="$SCRIPT_DIR/../../skills/subagent-driven-development/implementer-prompt.md"
+REVIEWER_PROMPT="$SCRIPT_DIR/../../skills/subagent-driven-development/task-reviewer-prompt.md"
+FINAL_REVIEW_PROMPT="$SCRIPT_DIR/../../skills/requesting-code-review/code-reviewer.md"
+INTEGRATION_TEST="$SCRIPT_DIR/test-subagent-driven-development-integration.sh"
+assert_canonical_recipe() {
+    local file=$1 label=$2 required
+    for required in \
+        '### Task 1: Implement bounded parser behavior' \
+        '**Files:**' \
+        '- Modify: `src/parser.py`' \
+        '- Test: `tests/test_parser.py`' \
+        '**Focused behavior:**' \
+        '**Test intent:**' \
+        '**Inherited interfaces:**' \
+        '- None' \
+        '**Out of scope:**' \
+        '- Unrelated Markdown extensions' \
+        '**Done when:**' \
+        '**Review intent:**' \
+        '**Cohesion override:**'; do
+        if ! grep -qF -- "$required" "$file"; then
+            echo "  [FAIL] $label missing canonical recipe text: $required"
+            return 1
+        fi
+    done
+    echo "  [PASS] $label has the bounded task recipe"
+}
+assert_canonical_recipe "$BRAINSTORMING_AUTHORING" "Brainstorming"
+assert_canonical_recipe "$WRITING_PLANS_AUTHORING" "Writing plans"
+
+for required in \
+    'independently testable behavioral slice' \
+    'Split before dispatch' \
+    'More than four production files' \
+    'multiple package roots' \
+    'refactor-plus-behavior' \
+    'non-empty cohesion override'; do
+    if ! grep -qF -- "$required" "$WRITING_PLANS_AUTHORING"; then
+        echo "  [FAIL] Writing plans missing boundary guidance: $required"
+        exit 1
+    fi
+done
+for required in \
+    'independently testable behavioral slice' \
+    'split it before dispatch' \
+    'More than four production files' \
+    'multiple package roots' \
+    'refactor-plus-behavior' \
+    'non-empty **Cohesion override**'; do
+    if ! grep -qF -- "$required" "$BRAINSTORMING_AUTHORING"; then
+        echo "  [FAIL] Brainstorming missing boundary guidance: $required"
+        exit 1
+    fi
+done
+echo "  [PASS] Task boundaries are warning-threshold based"
+
+# These stale phrases are checked against the files that own the guidance.
+if grep -qF -- 'full task text' "$SKILL_FILE"; then
+    echo "  [FAIL] SDD skill retains stale handoff guidance: full task text"
+    exit 1
+fi
+if grep -qF -- 'Read your task brief first:' "$IMPLEMENTER_PROMPT"; then
+    echo "  [FAIL] Implementer prompt retains stale brief wording"
+    exit 1
+fi
+if grep -qF -- 'a broad whole-branch review happens separately' "$REVIEWER_PROMPT"; then
+    echo "  [FAIL] Task reviewer prompt retains stale review wording"
+    exit 1
+fi
+if grep -qF -- 'code quality standards before it cascades' "$FINAL_REVIEW_PROMPT"; then
+    echo "  [FAIL] Final reviewer prompt retains stale review wording"
+    exit 1
+fi
+echo "  [PASS] Workflow handoffs use scoped artifact paths"
+
+EXPECTED_TASK_MODE_TEXT='Review this task'"'"'s implementation. This is an independent task-scoped gate, not a merge review — a fresh integration-focused final review happens separately. Use review mode `initial-task` or `incremental-rereview` exactly as supplied by the controller.'
+EXPECTED_FINAL_MODE_TEXT='Review the completed work against its requirements and integration-focused quality standards before it cascades into more work. Use review mode `final-integration` or `final-incremental-rereview` exactly as supplied by the controller; this is one fresh branch-level review, not a tiered review.'
+validate_mode_prompt() {
+    local prompt=$1 expected=$2 allowed_a=$3 allowed_b=$4 declaration_count
+    declaration_count=$(awk -v expected="$expected" '{ line=$0; sub(/^[[:space:]]+/, "", line); if (line == expected) count++ } END { print count + 0 }' "$prompt")
+    [[ "$declaration_count" -eq 1 ]] || return 1
+    grep -qF -- "\`$allowed_a\`" "$prompt" && grep -qF -- "\`$allowed_b\`" "$prompt"
+}
+if ! validate_mode_prompt "$REVIEWER_PROMPT" "$EXPECTED_TASK_MODE_TEXT" initial-task incremental-rereview || \
+   ! validate_mode_prompt "$FINAL_REVIEW_PROMPT" "$EXPECTED_FINAL_MODE_TEXT" final-integration final-incremental-rereview || \
+   grep -qE '^ *Use review mode `[^`]+` or `[^`]+` exactly as supplied\.?$' "$SKILL_FILE" "$IMPLEMENTER_PROMPT"; then
+    echo "  [FAIL] Review mode set or scoped semantics are incomplete"
+    exit 1
+fi
+if ! grep -qF 'Review modes are exactly `initial-task`, `incremental-rereview`, `final-integration`, and `final-incremental-rereview`.' "$SKILL_FILE"; then
+    echo "  [FAIL] Review mode set is incomplete"
+    exit 1
+fi
+echo "  [PASS] Review modes are exactly the four allowed modes with scoped semantics"
+
+if grep -qF 'Controller provides: <directly or by file>' "$INTEGRATION_TEST"; then
+    echo "  [FAIL] Integration fixture still requests pasted task text"
+    exit 1
+else
+    echo "  [PASS] Integration fixture uses path-based dispatch"
+fi
+
+if grep -qF 'test-subagent-driven-development.sh' "$SCRIPT_DIR/run-skill-tests.sh"; then
+    echo "  [PASS] SDD contract test is registered"
+else
+    echo "  [FAIL] SDD contract test is not registered"
+    exit 1
+fi
+
+echo ""
+
+# Test 2: Static workflow contract
+# Each contract phrase is asserted against the file that owns it.
+echo "Test 2: Workflow contract..."
+for required in \
+    'Orient → RED/GREEN → Verify → Report' \
+    'max 20 grep' \
+    'one concrete concept per search' \
+    'index-first complete-shard navigation'; do
+    if ! grep -qF -- "$required" "$SKILL_FILE"; then
+        echo "  [FAIL] SDD skill missing workflow contract: $required"
+        exit 1
+    fi
+done
+echo "  [PASS] SDD skill owns bounded workflow guidance"
+
+echo ""
+
+# Test 3: Verify skill can be loaded
+echo "Test 3: Skill loading..."
 
 output=$(run_claude "What is the subagent-driven-development skill? Describe its key steps briefly." "$CLAUDE_PROMPT_TIMEOUT")
 
@@ -62,8 +197,8 @@ fi
 
 echo ""
 
-# Test 2: Verify skill describes correct workflow order
-echo "Test 2: Workflow ordering..."
+# Test 4: Verify skill describes correct workflow order
+echo "Test 4: Workflow ordering..."
 
 output=$(run_claude "In the subagent-driven-development skill, what comes first: spec compliance review or code quality review? Answer using exactly this structure:
 First: <review type>
@@ -77,8 +212,8 @@ fi
 
 echo ""
 
-# Test 3: Verify self-review is mentioned
-echo "Test 3: Self-review requirement..."
+# Test 5: Verify self-review is mentioned
+echo "Test 5: Self-review requirement..."
 
 output=$(run_claude "Does the subagent-driven-development skill require implementers to self-review before handoff, and can self-review replace the external reviews? Answer using exactly this structure:
 Self-review required: <yes or no>
@@ -98,8 +233,8 @@ fi
 
 echo ""
 
-# Test 4: Verify plan is read once
-echo "Test 4: Plan reading efficiency..."
+# Test 6: Verify plan is read once
+echo "Test 6: Plan reading efficiency..."
 
 output=$(run_claude "In subagent-driven-development, how many times should the controller read the plan file? When does this happen?" "$CLAUDE_PROMPT_TIMEOUT")
 
@@ -117,8 +252,8 @@ fi
 
 echo ""
 
-# Test 5: Verify spec compliance reviewer is skeptical
-echo "Test 5: Spec compliance reviewer mindset..."
+# Test 7: Verify spec compliance reviewer is skeptical
+echo "Test 7: Spec compliance reviewer mindset..."
 
 output=$(run_claude "What is the spec compliance reviewer's attitude toward the implementer's report in subagent-driven-development?" "$CLAUDE_PROMPT_TIMEOUT")
 
@@ -136,8 +271,8 @@ fi
 
 echo ""
 
-# Test 6: Verify review loops
-echo "Test 6: Review loop requirements..."
+# Test 8: Verify review loops
+echo "Test 8: Review loop requirements..."
 
 output=$(run_claude "In subagent-driven-development, what happens if a reviewer finds issues? Is it a one-time review or a loop?" "$CLAUDE_PROMPT_TIMEOUT")
 
@@ -155,8 +290,8 @@ fi
 
 echo ""
 
-# Test 7: Verify full task text is provided
-echo "Test 7: Task context provision..."
+# Test 9: Verify full task text is provided
+echo "Test 9: Task context provision..."
 
 output=$(run_claude "In subagent-driven-development, how does the controller provide task information to the implementer subagent? Answer using exactly this structure:
 Controller provides: <directly or by file>
@@ -176,8 +311,8 @@ fi
 
 echo ""
 
-# Test 8: Verify worktree requirement
-echo "Test 8: Worktree requirement..."
+# Test 10: Verify worktree requirement
+echo "Test 10: Worktree requirement..."
 
 output=$(run_claude "What workflow skills are required before using subagent-driven-development? List any prerequisites or required skills." "$CLAUDE_PROMPT_TIMEOUT")
 
@@ -189,8 +324,8 @@ fi
 
 echo ""
 
-# Test 9: Verify main branch warning
-echo "Test 9: Main branch red flag..."
+# Test 11: Verify main branch warning
+echo "Test 11: Main branch red flag..."
 
 output=$(run_claude "In subagent-driven-development, is it okay to start implementation directly on the main branch?" "$CLAUDE_PROMPT_TIMEOUT")
 

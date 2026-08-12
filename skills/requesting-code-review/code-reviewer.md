@@ -11,8 +11,7 @@ Subagent (reviewer):
   model: [optional override — per the dispatching skill's Model Selection;
          the definition defaults to default_model:full]
   prompt: |
-    Review the completed work against its requirements and code quality
-    standards before it cascades into more work.
+    Review the completed work against its requirements and integration-focused quality standards before it cascades into more work. Use review mode `final-integration` or `final-incremental-rereview` exactly as supplied by the controller; this is one fresh branch-level review, not a tiered review.
 
     ## What Was Implemented
 
