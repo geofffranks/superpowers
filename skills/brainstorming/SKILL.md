@@ -179,15 +179,23 @@ Fix any issues inline. No need to re-review — just fix and move on.
 **Plan-reviewer dispatch:** After the inline self-review, dispatch the
 `plan-reviewer` subagent with the spec path (template:
 spec-document-reviewer-prompt.md). The inline check is a quick first pass; the
-plan-reviewer is the thorough second pass. Address every severity-classified
-finding before asking the user to review.
+plan-reviewer is a thorough single-pass spot check. Apply its findings by
+severity:
+
+- **Critical / High:** fix, then re-review so the fix is verified.
+- **Medium / Low / Nit:** fix (or rebut) and move on — re-reviewing is **not**
+  required.
+
+Ready for the user's review means every finding is fixed or rebutted; it does
+not require another reviewer pass unless a Critical/High fix changed the
+spec's substance.
 
 **User Review Gate:**
 After the review loop passes, ask the user to review the written doc before proceeding:
 
 > "Design doc + task checklist written to `<path>`. Please review it and let me know if you want to make any changes before we implement."
 
-Wait for the user's response. If they request changes, make them and re-run the review loop. Only proceed once the user approves.
+Wait for the user's response. If they request changes, make them. Re-run the review loop only when the changes substantively alter the spec (scope, design, or requirements) — minor wording tweaks do not warrant another plan-reviewer pass. Only proceed once the user approves.
 
 **Implementation paths:**
 

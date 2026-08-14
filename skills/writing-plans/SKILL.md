@@ -197,8 +197,16 @@ If you find issues, fix them inline. No need to re-review — just fix and move 
 After the inline self-review, dispatch the `plan-reviewer` subagent with the
 plan path and spec-for-reference path (template:
 plan-document-reviewer-prompt.md). The inline check is a quick first pass; the
-plan-reviewer is the thorough second pass. Address every severity-classified
-finding before the execution handoff.
+plan-reviewer is a thorough single-pass spot check. Apply its findings by
+severity:
+
+- **Critical / High:** fix, then re-review so the fix is verified.
+- **Medium / Low / Nit:** fix (or rebut) and move on — re-reviewing is **not**
+  required.
+
+Ready for the execution handoff means every finding is fixed or rebutted; it
+does not require another reviewer pass. Re-dispatch the plan-reviewer only when
+a Critical/High fix changed the plan's substance.
 
 ## Execution Handoff
 

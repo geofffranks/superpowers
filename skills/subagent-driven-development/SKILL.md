@@ -391,7 +391,8 @@ Done!
 - Skip scene-setting context (subagent needs to understand where task fits)
 - Ignore subagent questions (answer before letting them proceed)
 - Accept "close enough" on spec compliance (reviewer found spec issues = not done)
-- Skip review loops (reviewer found issues = implementer fixes = review again)
+- Skip the re-review after a fixer addresses Critical/Important findings (those fixes must be verified)
+- Re-review a task purely because you made changes to it — a task with only Minor findings is fixed and marked complete; those Minor findings feed the final review instead of a re-review pass
 - Let implementer self-review replace actual review (both are needed)
 - Tell a reviewer what not to flag, or pre-rate a finding's severity in the
   dispatch prompt ("treat it as Minor at most") — the plan's example code is
@@ -413,6 +414,9 @@ Done!
 - Reviewer reviews again
 - Repeat until approved
 - Don't skip the re-review
+- This loop applies only to Critical/Important findings. If the reviewer raised
+  only Minor findings, fix them and mark the task complete — do not dispatch a
+  re-review; those findings feed the final integration review.
 
 **If subagent fails task:**
 - Dispatch fix subagent with specific instructions

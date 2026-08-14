@@ -30,4 +30,16 @@ Subagent (plan-reviewer):
 - `[PLAN_FILE_PATH]` — the plan document path
 - `[SPEC_FILE_PATH]` — the spec the plan was written from
 
-**plan-reviewer returns:** severity-classified findings that must be fixed or rebutted before handoff.
+**plan-reviewer returns:** severity-classified findings.
+
+**This is a single-pass spot check, not an iterative review loop.** Dispatch it
+once over the current plan; do not re-dispatch it simply because you made
+changes after it ran. Apply its findings by severity:
+
+- **Critical / High:** fix, then re-review so the fix is verified.
+- **Medium / Low / Nit:** fix (or rebut) and move on — re-reviewing is **not**
+  required.
+
+**Ready to hand off** means every finding is fixed or rebutted. It does **not**
+mean a fresh reviewer pass ran after your changes — a follow-up review is only
+needed when a Critical/High fix changed the plan's substance.
