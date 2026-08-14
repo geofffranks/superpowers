@@ -1,187 +1,67 @@
 ---
 name: finishing-a-development-branch
-description: Use when implementation is complete, all tests pass, and you need to decide how to integrate the work - guides completion of development work by presenting structured options for merge, PR, or cleanup
+description: Use when implementation is complete and validated - verifies automated validation passed, squashes and cleans up the feature worktree, and hands the human the manual validation steps to finish. Does not push, merge, or open PRs.
 ---
 
 # Finishing a Development Branch
 
 ## Overview
 
-Guide completion of development work by presenting clear options and handling chosen workflow.
+Complete implementation by verifying the **automated validation** passed,
+**squashing** the branch into one commit, **cleaning up the feature worktree**,
+and handing the human the **manual validation steps** to finish. Branch
+integration (push/merge/PR) is left to the human — this skill does not offer it.
 
-**Core principle:** Verify tests → Detect environment → Present options → Execute choice → Clean up.
+**Core principle:** Verify automated validation → Squash → Clean up worktree → Hand off manual validation.
 
-**Integration safety rule:** Never merge, overlay, move a branch ref, reset, or clean a dirty target worktree. Named feature worktrees are preserved exactly; disposable integration worktrees are explicitly manifested and cleaned only after result verification.
+**Integration safety rule:** Never remove a worktree you did not create, and never
+remove a worktree with uncommitted changes unless they are intentionally
+discarded. Named feature worktrees are preserved exactly; cleanup is scoped to
+the worktree we own (under `.worktrees/` or `worktrees/`).
 
 **Announce at start:** "I'm using the finishing-a-development-branch skill to complete this work."
 
-## The Process
+## Step 1: Verify Automated Validation Passed
 
-### Step 1: Verify Tests
-
-**Before presenting options, verify tests pass:**
+Confirm the plan's Finalize work is complete: the **automated validation** ran
+and passed, and the branch is ready to finish.
 
 ```bash
-# Run project's test suite
+# Run the project's automated validation / test suite
 npm test / cargo test / pytest / go test ./...
 ```
 
-**If tests fail:**
+**If automated validation fails:**
 ```
-Tests failing (<N> failures). Must fix before completing:
-
-[Show failures]
-
-Cannot proceed with merge/PR until tests pass.
+Automated validation failing (<N> failures).
+Cannot finish until it passes.
 ```
 
 Stop. Don't proceed to Step 2.
 
-**If tests pass:** Continue to Step 2.
+**If it passes:** continue. If automated validation was already run and recorded
+in the plan's validation document, you may rely on that record instead of
+re-running.
 
-### Step 2: Detect Environment
+## Step 2: Squash the Branch's Commits Into One
 
-**Determine workspace state before presenting options:**
-
-```bash
-GIT_DIR=$(cd "$(git rev-parse --git-dir)" 2>/dev/null && pwd -P)
-GIT_COMMON=$(cd "$(git rev-parse --git-common-dir)" 2>/dev/null && pwd -P)
-```
-
-This determines which menu to show and how cleanup works:
-
-| State | Menu | Cleanup |
-|-------|------|---------|
-| `GIT_DIR == GIT_COMMON` (normal repo) | Standard 4 options | No worktree to clean up |
-| `GIT_DIR != GIT_COMMON`, named branch | Standard 4 options | Provenance-based (see Step 6) |
-| `GIT_DIR != GIT_COMMON`, detached HEAD | Reduced 3 options (no merge) | No cleanup (externally managed) |
-
-### Step 3: Determine Base Branch
+After automated validation passes, squash the branch's commits into one against
+its base:
 
 ```bash
-# Try common base branches
-git merge-base HEAD main 2>/dev/null || git merge-base HEAD master 2>/dev/null
+BASE=$(git merge-base HEAD <base-branch>)
+git rebase -i "$BASE"
 ```
 
-Or ask: "This branch split from main - is that correct?"
+Combine the branch's commits into a single commit describing the finished work.
+If the branch already carries a single squashed commit, nothing further is
+needed.
 
-### Step 4: Present Options
+## Step 3: Clean Up the Worktree
 
-**Normal repo and named-branch worktree — present exactly these 4 options:**
+Clean up **now** — do **not** wait for the human's manual validation to finish.
 
-```
-Implementation complete. What would you like to do?
-
-1. Merge back to <base-branch> locally
-2. Push and create a Pull Request
-3. Keep the branch as-is (I'll handle it later)
-4. Discard this work
-
-Which option?
-```
-
-**Detached HEAD — present exactly these 3 options:**
-
-```
-Implementation complete. You're on a detached HEAD (externally managed workspace).
-
-1. Push as new branch and create a Pull Request
-2. Keep as-is (I'll handle it later)
-3. Discard this work
-
-Which option?
-```
-
-**Don't add explanation** - keep options concise.
-
-### Step 5: Execute Choice
-
-#### Option 1: Merge Locally
-
-Before merging, record the target worktree fingerprint and inspect all linked worktrees:
-
-```bash
-git status --short --branch
-git diff --cached --stat
-git diff --cached --name-only
-git worktree list --porcelain
-```
-
-If the target worktree has staged or unstaged changes, stop and preserve it. Do not merge there. Use a clean disposable integration worktree with a manifest (`path`, `purpose`, `base`, `owner`, `cleanup`) and a cleanup trap, or ask the human to commit/shelve the dirty work first.
-
-```bash
-set -euo pipefail
-MAIN_ROOT=$(git rev-parse --show-toplevel)
-TMP="$MAIN_ROOT/.worktrees/tmp-merge-<slug>-$$"
-cleanup() {
-  if ! git -C "$MAIN_ROOT" worktree remove --force "$TMP"; then
-    echo "temporary worktree cleanup failed: $TMP" >&2
-    return 1
-  fi
-  if git -C "$MAIN_ROOT" worktree list --porcelain | grep -Fqx "worktree $TMP"; then
-    echo "temporary worktree still registered after cleanup: $TMP" >&2
-    return 1
-  fi
-}
-trap cleanup EXIT INT TERM
-git worktree add --detach "$TMP" <base-branch>
-git -C "$TMP" merge --no-ff <feature-branch> -m "Merge <feature-branch>"
-# Verify exact changed paths, resulting commit, and tests in "$TMP".
-```
-
-Only after the merged result is verified may the named feature worktree be removed according to Step 6 and the branch deleted. Never broadly prune unrelated worktrees.
-
-Then: Cleanup worktree (Step 6), then delete branch:
-
-```bash
-git branch -d <feature-branch>
-```
-
-#### Option 2: Push and Create PR
-
-```bash
-# Push branch
-git push -u origin <feature-branch>
-```
-
-**Do NOT clean up worktree** — user needs it alive to iterate on PR feedback.
-
-#### Option 3: Keep As-Is
-
-Report: "Keeping branch <name>. Worktree preserved at <path>."
-
-**Don't cleanup worktree.**
-
-#### Option 4: Discard
-
-**Confirm first:**
-```
-This will permanently delete:
-- Branch <name>
-- All commits: <commit-list>
-- Worktree at <path>
-
-Type 'discard' to confirm.
-```
-
-Wait for exact confirmation.
-
-If confirmed:
-```bash
-MAIN_ROOT=$(git -C "$(git rev-parse --git-common-dir)/.." rev-parse --show-toplevel)
-cd "$MAIN_ROOT"
-```
-
-Then: Cleanup worktree (Step 6), then force-delete branch:
-```bash
-git branch -D <feature-branch>
-```
-
-### Step 6: Cleanup Workspace
-
-**Only runs for Options 1 and 4.** Options 2 and 3 always preserve the worktree.
-
-For disposable worktrees created during Options 1 or 4, cleanup is unconditional and scoped to the exact manifest path. Install the cleanup trap before creation, verify the expected commit is reachable, then remove that path from the repository root. If cleanup fails, report the remaining path; do not silently continue. For named feature worktrees, cleanup requires provenance from `git worktree list --porcelain`, a successful merge/discard decision, and an explicit branch/path match.
+Determine workspace ownership before removing anything:
 
 ```bash
 GIT_DIR=$(cd "$(git rev-parse --git-dir)" 2>/dev/null && pwd -P)
@@ -191,7 +71,9 @@ WORKTREE_PATH=$(git rev-parse --show-toplevel)
 
 **If `GIT_DIR == GIT_COMMON`:** Normal repo, no worktree to clean up. Done.
 
-**If worktree path is under `.worktrees/` or `worktrees/`:** Superpowers created this worktree — we own cleanup.
+**If the worktree path is under `.worktrees/` or `worktrees/`:** Superpowers
+created this worktree — we own cleanup. Verify the squashed commit is reachable,
+then remove:
 
 ```bash
 MAIN_ROOT=$(git -C "$(git rev-parse --git-common-dir)/.." rev-parse --show-toplevel)
@@ -200,69 +82,66 @@ git worktree remove "$WORKTREE_PATH"
 git worktree prune  # Self-healing: clean up any stale registrations
 ```
 
-**Otherwise:** The host environment (harness) owns this workspace. Do NOT remove it. If your platform provides a workspace-exit tool, use it. Otherwise, leave the workspace in place.
+**Otherwise:** The host environment (harness) owns this workspace. Do NOT remove
+it. Leave the workspace in place.
 
-## Quick Reference
+## Step 4: Present the Manual Validation Steps
 
-| Option | Merge | Push | Keep Worktree | Cleanup Branch |
-|--------|-------|------|---------------|----------------|
-| 1. Merge locally | yes | - | - | yes |
-| 2. Create PR | - | yes | yes | - |
-| 3. Keep as-is | - | - | yes | - |
-| 4. Discard | - | - | - | yes (force) |
+Present the manual validation steps from the plan's validation document to the
+human and ask them to complete them. Do not mark the manual steps done yourself,
+do not push/merge/open a PR, and do not advance the ticket past
+`pending-validation` until the human confirms completion.
+
+> "Automated validation passed, the branch is squashed, and the worktree is
+> cleaned up. Please complete these manual validation steps:
+>
+> [list the manual steps]
+>
+> Let me know once they pass. I'll leave integration (push/merge/PR) to you."
 
 ## Common Mistakes
 
-**Skipping test verification**
-- **Problem:** Merge broken code, create failing PR
-- **Fix:** Always verify tests before offering options
+**Skipping automated validation**
+- **Problem:** Finish unvalidated work
+- **Fix:** Always verify automated validation before squashing or cleaning up
 
-**Open-ended questions**
-- **Problem:** "What should I do next?" is ambiguous
-- **Fix:** Present exactly 4 structured options (or 3 for detached HEAD)
+**Cleaning up before automated validation passes**
+- **Problem:** Lose the worktree while validation is still failing
+- **Fix:** Verify automated validation passes (Step 1) before cleanup (Step 3)
 
-**Cleaning up worktree for Option 2**
-- **Problem:** Remove worktree user needs for PR iteration
-- **Fix:** Only cleanup for Options 1 and 4
+**Waiting for manual validation before cleanup**
+- **Problem:** Leave the workspace dangling while the human validates
+- **Fix:** Clean up after automated validation passes; the manual pass happens in
+  the human's own workspace
 
-**Deleting branch before removing worktree**
-- **Problem:** `git branch -d` fails because worktree still references the branch
-- **Fix:** Merge first, remove worktree, then delete branch
-
-**Running git worktree remove from inside the worktree**
-- **Problem:** Command fails silently when CWD is inside the worktree being removed
-- **Fix:** Always `cd` to main repo root before `git worktree remove`
-
-**Cleaning up harness-owned worktrees**
-- **Problem:** Removing a worktree the harness created causes phantom state
+**Removing a worktree you didn't create**
+- **Problem:** Cause phantom state in the host harness
 - **Fix:** Only clean up worktrees under `.worktrees/` or `worktrees/`
 
-**No confirmation for discard**
-- **Problem:** Accidentally delete work
-- **Fix:** Require typed "discard" confirmation
+**Running `git worktree remove` from inside the worktree**
+- **Problem:** Command fails silently when CWD is inside the worktree being removed
+- **Fix:** Always `cd` to the main repo root before `git worktree remove`
+
+**Offering push/merge/PR**
+- **Problem:** Contradicts the skill's contract — integration is the human's job
+- **Fix:** End at the manual validation handoff; do not offer integration options
 
 ## Red Flags
 
 **Never:**
-- Proceed with failing tests
-- Merge without verifying tests on result
-- Merge or overlay into a worktree with staged or unstaged changes
-- Delete work without confirmation
-- Force-push without explicit request
-- Remove a worktree before confirming merge success
-- Clean up worktrees you didn't create (provenance check)
-- Reuse an unowned scratch path
-- Run `git worktree remove` from inside the worktree
+- Proceed with failing automated validation
+- Clean up before automated validation passes
+- Wait for manual validation before cleaning up the worktree
+- Remove a worktree you didn't create (provenance check)
+- Remove a worktree with uncommitted changes unless intentionally discarded
 - Treat a successful cleanup command as proof without checking `git worktree list --porcelain`
+- Push, merge, open a PR, or offer to
+- Advance the ticket past `pending-validation` before the human completes the manual steps
 
 **Always:**
-- Verify tests before offering options
-- Detect environment before presenting menu
-- Record the target status/index fingerprint and `git worktree list --porcelain` before integration
-- Present exactly 4 options (or 3 for detached HEAD)
-- Get typed confirmation for Option 4
-- Use a manifest and cleanup trap for every disposable worktree
-- Clean up worktree for Options 1 & 4 only
-- `cd` to main repo root before worktree removal
-- Verify the exact expected result and changed paths before cleanup
-- Run `git worktree prune` after removal, scoped to the operation
+- Verify automated validation before squashing or cleaning up
+- Squash the branch's commits into one
+- Clean up the worktree after automated validation passes, without waiting for manual validation
+- Detect worktree ownership (`GIT_DIR`/`GIT_COMMON`) before removing anything
+- `cd` to the main repo root before worktree removal
+- Present the manual validation steps to the human and leave integration to them

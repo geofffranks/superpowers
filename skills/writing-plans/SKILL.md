@@ -102,6 +102,18 @@ include this section.]
 ---
 ```
 
+## Required Setup, Code Review, and Finalize Tasks
+
+Every plan wraps its tasks in three fixed bookends. **Setup** is the first task, **Code Review** is the second-to-last, and **Finalize** is the last, in that order.
+
+**Setup (first task):** start the ticket / work item (`tk start <id>` where Herdle is in use), create the work branch from the repository's default branch, and record the branch on the ticket.
+
+**Code Review (second-to-last task):** run one fresh final integration review of the full branch diff against its base; address valid Critical/Important findings as one complete fixer batch, then rereview only after branch-changing fixes. Defer the review mechanics to `requesting-code-review`.
+
+**Finalize (last task):** write the **validation plan** split into **automated** and **manual** sections with concrete runnable steps; run the **automated validation** and fix defects until it passes; **squash** the branch's commits into one; and present the **manual validation steps** to the human for completion. Do not mark the manual steps done yourself.
+
+Write Finalize with the same concrete, non-placeholder steps as any other task (see "No Placeholders"). Where Herdle is in use, `herdle-tk-artifacts` supplies the lifecycle/gatekeeper stamping (`tk start`, `branch:` frontmatter, `lifecycle:` transitions) that wraps these bookends.
+
 ## Task Structure
 
 Every task is one independently testable behavioral slice. Split before dispatch when a task combines independently testable behaviors, unrelated subsystems, unresolved design with implementation, or cannot state one focused test intent and one done condition. More than four production files, multiple package roots, or refactor-plus-behavior are warning thresholds, not automatic failure; a genuinely cohesive multi-file slice crossing one must include a non-empty cohesion override explaining the boundary. File count is not a hard failure by itself. Preserve review intent for the later final integration review, and do not paste prior plan/history into dispatch prompts.

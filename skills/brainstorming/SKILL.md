@@ -136,7 +136,24 @@ Do NOT invoke frontend-design, mcp-builder, or any other implementation skill di
 
 The design doc ends with an `## Implementation Tasks` checklist — this is what makes the doc *the plan*, so a separate writing-plans pass isn't needed for the common case. Write the tasks **TDD-lite**: each task carries a title, the files it touches, what its test asserts (intent, not the code), and a one-line "done when". The implementing agent writes the real test and code live via `superpowers:test-driven-development` — do not spell out full code blocks or exact commands here.
 
-Wrap the work in the fixed **Setup** (first) and **Code Review** + **Finalize** (last two) tasks per `herdle-tk-artifacts`. Follow that skill for the exact task contents and lifecycle stamping — don't restate them here.
+Wrap the work in the fixed **Setup** (first) and **Code Review** + **Finalize** (last two) tasks, in that order. These task contents are canonical here and apply in any harness; `herdle-tk-artifacts` supplies only Herdle lifecycle/gatekeeper stamping (`tk start`, `branch:` frontmatter, `lifecycle:` transitions).
+
+### Setup (first task)
+
+- Start the ticket / work item (`tk start <id>` where Herdle is in use).
+- Create the work branch from the repository's default branch; record it on the ticket and set `lifecycle: in-development`.
+
+### Code Review (second-to-last task)
+
+- Run one fresh final integration review of the full branch diff against its base (defer the review mechanics to `requesting-code-review`).
+- Collect valid Critical/Important findings, address them as one complete fixer batch, and rereview only after branch-changing fixes.
+
+### Finalize (last task)
+
+- Write the **validation plan** split into **automated** and **manual** sections with concrete, runnable steps.
+- Run the **automated validation**; fix defects until it passes.
+- **Squash** the branch's commits into one.
+- Present the **manual validation steps** to the human for completion (do not mark them done yourself), and keep the ticket at `pending-validation` until a human completes them (Herdle).
 
 Each implementation task is one independently testable behavioral slice. When a task combines independently testable behaviors, split it before dispatch; also split unrelated behaviors or subsystems, unresolved design with implementation, or work that cannot state one focused test intent and one done condition. More than four production files, multiple package roots, or refactor-plus-behavior are warning thresholds: keep a genuinely cohesive multi-file slice only with a non-empty **Cohesion override** explaining why; file count is not a hard failure by itself. Preserve deferred review intent for the later final integration review.
 
