@@ -28,16 +28,43 @@ Subagent (plan-reviewer):
 **Placeholders:**
 - `[SPEC_FILE_PATH]` — the spec document path
 
-**plan-reviewer returns:** severity-classified findings.
+**plan-reviewer returns:** severity-classified findings with stable finding IDs
+such as `SPEC-001`. Every finding includes its severity, exact document location, the
+violated requirement or review category, the required change, and status:
+`open`, `fixed`, or `rebutted`.
 
-**This is a single-pass spot check, not an iterative review loop.** Dispatch it
-once over the current spec; do not re-dispatch it simply because you made
-changes after it ran. Apply its findings by severity:
+## Review modes
 
-- **Critical / High:** fix, then re-review so the fix is verified.
-- **Medium / Low / Nit:** fix (or rebut) and move on — re-reviewing is **not**
-  required.
+The controller must declare one mode and provide the matching comparison data:
 
-**Ready to hand off** means every finding is fixed or rebutted. It does **not**
-mean a fresh reviewer pass ran after your changes — a follow-up review is only
-needed when a Critical/High fix changed the spec's substance.
+- **Initial review:** inspect the complete current spec and the repository context
+  needed to validate its requirements, scope, architecture, and buildability.
+- **Follow-up review:** use the previous/current version boundary to inspect only
+  the changed sections since the previous review, the stable IDs of every
+  unresolved prior finding, and directly affected dependencies/context.
+  Do not perform another whole-document review unless the change materially alters the spec's overall
+  scope, architecture, or requirements.
+
+Every follow-up dispatch includes:
+
+```text
+Review mode: initial or follow-up
+Previous reviewed version: [commit, timestamp, or content hash]
+Current version: [commit, timestamp, or content hash]
+Changed sections since previous review: [document sections]
+Prior finding IDs being rechecked: [stable IDs]
+```
+
+## Review loop and exit condition
+
+Run the initial review once. Batch all Critical and High findings before editing;
+fix or rebut each finding, preserving its stable ID. Run a follow-up review only
+when a Critical/High fix changed the spec's substance. A follow-up may add new
+findings only when the changed sections or directly affected context reveal a
+new real blocker. Stop when every blocking finding is `fixed` or `rebutted` and
+the follow-up reports **no new blocking findings**. Medium, Low, and Nit findings
+do not trigger a follow-up review.
+
+**Ready to hand off** means every finding is fixed or rebutted and the final
+follow-up, when required, reports no new blocking findings. A wording-only edit,
+a Minor/Low/Nit fix, or an unchanged finding does not justify another full review.

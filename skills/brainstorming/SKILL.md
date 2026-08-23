@@ -42,7 +42,7 @@ You MUST create a task for each of these items and complete them in order:
 6. **Write design doc + task checklist** — save to `docs/superpowers/<tkid>-<slug>/design_spec.md` (never commit — see "After the Design"); append the `## Implementation Tasks` checklist so the design doc *is* the plan
 7. **Spec self-review** — quick inline check for placeholders, contradictions, ambiguity, scope (see below)
 8. **User reviews written doc** — ask the user to review the design doc + task checklist before proceeding
-9. **Choose execution path** — offer the end-fork: Lightweight (implement in-session off the checklist) or Full plan (invoke writing-plans). See "End Fork" below
+9. **Choose execution path** — offer the end-fork: Lightweight (implement in-session off the checklist) or Subagent workflow (delegate the checklist). See "End Fork" below
 10. **Execute the chosen path** — after the user selects one option, follow only that execution path; do not begin implementation before the choice.
 
 ## Process Flow
@@ -80,7 +80,7 @@ digraph brainstorming {
 **The execution fork is mandatory after the user approves the written document.** Do not infer the choice from phrases such as "start now," "use your judgment," or "don't block on me"; present both paths and ask the user to choose.
 
 - **Lightweight / inline:** implement the design doc's `## Implementation Tasks` in the current session, invoking `superpowers:test-driven-development` per task and running Setup → work → Code Review → Finalize.
-- **Subagent workflow:** use the existing design doc's `## Implementation Tasks` as the plan and invoke `superpowers:subagent-driven-development` for in-session delegated execution, or `superpowers:executing-plans` when the user wants a separate-session handoff. Do not recreate the deleted `writing-plans` step.
+- **Subagent workflow:** use the approved design doc's `## Implementation Tasks` as the plan and invoke `superpowers:subagent-driven-development` for in-session delegated execution, or `superpowers:executing-plans` when the user wants a separate-session handoff.
 
 Do NOT invoke frontend-design, mcp-builder, or any other implementation skill directly from brainstorming; enter one of the two paths above first.
 
@@ -183,29 +183,14 @@ Use this bounded recipe for every task:
 **Cohesion override:** Keep the parser and its focused test together because they form one independently testable behavior.
 ```
 
-**Spec Self-Review:**
-After writing the spec document, look at it with fresh eyes:
+## Spec self-review
 
-1. **Placeholder scan:** Any "TBD", "TODO", incomplete sections, or vague requirements? Fix them.
-2. **Internal consistency:** Do any sections contradict each other? Does the architecture match the feature descriptions?
-3. **Scope check:** Is this focused enough for a single implementation plan, or does it need decomposition?
-4. **Ambiguity check:** Could any requirement be interpreted two different ways? If so, pick one and make it explicit.
-
-Fix any issues inline. No need to re-review — just fix and move on.
-
-**Plan-reviewer dispatch:** After the inline self-review, dispatch the
-`plan-reviewer` subagent with the spec path (template:
-spec-document-reviewer-prompt.md). The inline check is a quick first pass; the
-plan-reviewer is a thorough single-pass spot check. Apply its findings by
-severity:
-
-- **Critical / High:** fix, then re-review so the fix is verified.
-- **Medium / Low / Nit:** fix (or rebut) and move on — re-reviewing is **not**
-  required.
-
-Ready for the user's review means every finding is fixed or rebutted; it does
-not require another reviewer pass unless a Critical/High fix changed the
-spec's substance.
+After writing the spec document, inspect it with fresh eyes for placeholders,
+contradictions, scope, and ambiguity. Fix those issues inline. For the optional
+independent review, use `spec-document-reviewer-prompt.md`: its initial review is
+full-scope, while any required follow-up is delta-scoped with explicit version
+boundaries, changed sections, and prior finding IDs. The follow-up exit condition
+is all blocking findings fixed or rebutted with no new blocking findings.
 
 **User Review Gate:**
 After the review loop passes, ask the user to review the written doc before proceeding:
