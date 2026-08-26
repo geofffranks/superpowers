@@ -16,26 +16,27 @@ Claiming work is complete without verification is dishonesty, not efficiency.
 ## The Iron Law
 
 ```
-NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
+NO COMPLETION CLAIMS WITHOUT SUFFICIENT VERIFICATION EVIDENCE
 ```
 
-If you haven't run the verification command in this message, you cannot claim it passes.
+Evidence must be collected after the final relevant mutation. “Fresh” means relevant to the current state, not a command repeated because the conversation entered a new phase. Verification already performed after the final mutation remains valid; do not rerun an equivalent check solely to restate the same claim.
 
 ## The Gate Function
 
 ```
-BEFORE claiming any status or expressing satisfaction:
+BEFORE claiming completion:
 
-1. IDENTIFY: What command proves this claim?
-2. RUN: Execute the FULL command (fresh, complete)
-3. READ: Full output, check exit code, count failures
-4. VERIFY: Does output confirm the claim?
-   - If NO: State actual status with evidence
-   - If YES: State claim WITH evidence
-5. ONLY THEN: Make the claim
+1. IDENTIFY: What is the smallest check that proves this claim?
+2. RUN or READ BACK: Perform it after the final relevant mutation.
+3. READ: Check output, exit code, and scope.
+4. VERIFY: Does the evidence confirm the claim?
+   - If NO: State actual status with evidence.
+   - If YES: State the claim with the evidence and stop.
 
-Skip any step = lying, not verifying
+One final integration verification is enough when it subsumes earlier checks.
 ```
+
+For prose and metadata, use focused semantic read-back, reference/link checks, and formatting checks. Do not build a regression-test framework for one-time wording unless the text is a machine-consumed contract. CI logs, session logs, and PR checks are evidence; do not turn their output into a committed validation document by default.
 
 ## Common Failures
 
@@ -116,19 +117,24 @@ From 24 failure memories:
 
 ## When To Apply
 
-**ALWAYS before:**
-- ANY variation of success/completion claims
-- ANY expression of satisfaction
-- ANY positive statement about work state
-- Committing, PR creation, task completion
-- Moving to next task
-- Delegating to agents
+Apply before claiming a completed, fixed, or passing result, committing, opening a PR, or closing a task. Match the check to the claim and scope; do not manufacture a new phase or a second equivalent run.
 
-**Rule applies to:**
-- Exact phrases
-- Paraphrases and synonyms
-- Implications of success
-- ANY communication suggesting completion/correctness
+For any persistent validation/evidence file, first apply `superpowers:artifact-retention-policy`. Persistent evidence is required only when validation itself is a durable deliverable—such as operator qualification, compliance, migration attestation, or a physical-hardware compatibility record—with a defined consumer and validity scope.
+
+## Anti-pattern
+
+Bad:
+```
+edit Markdown → test exact heading → write validation plan → dispatch validator
+→ write validator report → rerun same heading test
+```
+
+Good:
+```
+edit Markdown → read it back → check links and formatting → report result
+```
+
+Product tests must not require workflow-document headings, review checkboxes, validator reports, dated plan paths, or historical validation files. Tests may validate durable product documentation only when it is a shipped interface, policy, runbook, schema, or privacy contract. Process compliance belongs in workflow state, CI metadata, or ticket state.
 
 ## The Bottom Line
 

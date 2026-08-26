@@ -7,34 +7,40 @@ description: Use when you have a written implementation plan to execute in a sep
 
 ## Overview
 
-Load plan, review critically, execute all tasks, report when complete.
+Classify the approved work first, then load only the coordination needed for its risk and scope. For class-1 cleanup, execute directly and report concise evidence; for larger work, load the plan, review it critically, execute the applicable tasks, and report when complete.
 
 **Announce at start:** "I'm using the executing-plans skill to implement this plan."
 
-**Note:** Tell your human partner that Superpowers works much better with access to subagents. The quality of its work will be significantly higher if run on a platform with subagent support (Claude Code, Codex CLI, Codex App, and Copilot CLI all qualify; see the per-platform tool refs in `../using-superpowers/references/`). If subagents are available, use superpowers:subagent-driven-development instead of this skill.
+**Note:** Subagent-driven development is an option for genuinely independent multi-task work, not a default for small docs, metadata, or config cleanup.
 
-## The Process
+## Proportionality classification
 
-### Step 1: Load and Review Plan
-1. Read plan file
-2. Review critically - identify any questions or concerns about the plan
-3. If concerns: Raise them with your human partner before starting
-4. If no concerns: Create todos for the plan items and proceed
+Classify the approved request before creating todos, loading sub-skills, or applying a development lifecycle:
 
-### Step 2: Execute Tasks
+1. **Small mechanical metadata/docs/config cleanup** — contained wording, metadata, or configuration edits with no design trade-off or product implementation.
+2. **Ordinary single-session implementation** — a bounded feature, bug fix, or refactor that can be completed in one session.
+3. **Multi-session or parallel implementation** — work requiring handoff, independent task coordination, or parallel contributors.
+4. **Qualification-, security-, migration-, or audit-sensitive work** — work whose evidence, rollback, provenance, or approval has a continuing operational or compliance purpose.
 
-For each task:
-1. Mark as in_progress
-2. Follow each step exactly (plan has bite-sized steps)
-3. Run verifications as specified
-4. Mark as completed
+Explicit scope language controls. If the request says it is a small planning/docs/metadata cleanup and excludes RFCs, tickets, artifacts, or formal review, do not reintroduce those through generic defaults.
 
-### Step 3: Complete Development
+**Required shared policy:** Use `superpowers:artifact-retention-policy` when deciding whether an execution artifact is temporary, attached to a ticket, or durable.
 
-After all tasks complete and verified:
-- Announce: "I'm using the finishing-a-development-branch skill to complete this work."
-- **REQUIRED SUB-SKILL:** Use superpowers:finishing-a-development-branch
-- Follow that skill to verify tests, present options, execute choice
+### Class 1: direct execution
+
+Execute directly from the approved request or plan. An approved plan is already the plan; do not mirror numbered steps into a second design, task brief, validation plan, or todo graph. Create todos only when they materially help continuation. Do not require subagents, a worktree, TDD, code review, a validator, or `finishing-a-development-branch` merely because a plan exists. Use one focused final verification pass and report results concisely.
+
+A referenced sub-skill may be declared inapplicable when it assumes code implementation, worktrees, test suites, squashing, or manual validation that this scope does not have.
+
+### Classes 2–4: execute the plan
+
+1. Read the plan and review it for real contradictions or blockers.
+2. Raise genuine concerns before starting; do not manufacture ceremony when the plan is clear.
+3. Create todos only when they provide useful progress/recovery state; the plan remains the authoritative task list.
+4. For each task, follow the plan, run the smallest specified verification, and record completion.
+5. Apply reviews, subagents, worktrees, and finalization only when required by the classification, risk, or approved plan.
+
+After implementation, use `verification-before-completion` to perform sufficient final verification. Use `finishing-a-development-branch` only when branch/worktree integration, squashing, or human manual validation is actually part of the work.
 
 ## When to Stop and Ask for Help
 
@@ -64,7 +70,9 @@ After all tasks complete and verified:
 
 ## Integration
 
-**Required workflow skills:**
-- **superpowers:using-git-worktrees** - Ensures isolated workspace (creates one or verifies existing)
-- **superpowers:brainstorming** - Creates the approved design and implementation-task checklist this skill executes
-- **superpowers:finishing-a-development-branch** - Complete development after all tasks
+For classes 2–4, load only the sub-skills that match the approved scope and classification:
+- `superpowers:using-git-worktrees` when isolation is genuinely necessary.
+- `superpowers:brainstorming` when the work needs a new design rather than an already approved plan.
+- `superpowers:finishing-a-development-branch` when branch/worktree integration, squashing, or human manual validation is part of the work.
+
+These are not required for class-1 direct execution. A sub-skill whose assumptions do not fit the scope may be declared inapplicable.

@@ -18,7 +18,9 @@ Not every change needs the full dialogue — don't brainstorm every little thing
 - There are no design decisions or trade-offs; there is one obvious correct approach.
 - The blast radius is contained — no new component, interface, or dependency.
 
-When all four hold, briefly state what you're about to do and do it (still using `superpowers:test-driven-development` for code changes). A one-line fix does not need a design doc.
+When all four hold, **return from this skill's workflow immediately**: briefly state what you're about to do, perform the bounded work directly, and read back the result. Use `superpowers:test-driven-development` only for production code; do not invoke it for documentation-only or metadata-only edits. Do not create `docs/superpowers/.../design_spec.md`, a ticket, a duplicate plan, a task checklist, a validation plan, or a review/finalization scaffold. Do not require an execution-model question, subagent, worktree, validator, or persistent evidence artifact. Keep command output in session/CI logs.
+
+The same early return applies when the approved request explicitly describes a small planning/docs/metadata cleanup and excludes RFCs, tickets, artifacts, or formal review. That scope-specific instruction overrides generic workflow defaults.
 
 **If ANY of them is in doubt, run the full workflow.** "This feels simple" is not the test — *genuinely well-defined and small* is. The next section is about exactly that trap.
 
@@ -30,16 +32,18 @@ For any change that is NOT a genuine skip per "When to skip the full workflow" a
 
 This is the failure mode the skip criteria guard against: assuming simplicity you haven't verified. A change that *feels* trivial but hides an unexamined assumption — a hidden interface, an ambiguous requirement, a "we'll just" — is where the most work gets wasted. If you're reaching for the skip because designing the work is tedious rather than because it's genuinely well-defined, that's the trap. When in doubt, present a short design (a few sentences) and get approval.
 
-## Checklist
+## Checklist for the full workflow
 
-You MUST create a task for each of these items and complete them in order:
+This checklist applies only after the skip-path test above fails. Class-1 work returns before this section; do not create any of these artifacts or gates for that work.
+
+Create a task for each applicable item and complete them in order:
 
 1. **Explore project context** — check files, docs, recent commits
 2. **Offer the visual companion just-in-time** — NOT upfront. The first time a question would genuinely be clearer shown than described, offer it then (its own message); on approval its browser tab opens for you. If no visual question ever arises, never offer it. See the Visual Companion section below.
 3. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
 4. **Propose 2-3 approaches** — with trade-offs and your recommendation
 5. **Present design** — in sections scaled to their complexity, get user approval after each section
-6. **Write design doc + task checklist** — save to `docs/superpowers/<tkid>-<slug>/design_spec.md` (never commit — see "After the Design"); append the `## Implementation Tasks` checklist so the design doc *is* the plan
+6. **Write design doc + task checklist** — for full-workflow changes, save to `docs/superpowers/<tkid>-<slug>/design_spec.md` only when coordination requires it (see "After the Design"); append the `## Implementation Tasks` checklist so the design doc *is* the plan
 7. **Spec self-review** — quick inline check for placeholders, contradictions, ambiguity, scope (see below)
 8. **User reviews written doc** — ask the user to review the design doc + task checklist before proceeding
 9. **Choose execution path** — offer the end-fork: Lightweight (implement in-session off the checklist) or Subagent workflow (delegate the checklist). See "End Fork" below
@@ -77,10 +81,10 @@ digraph brainstorming {
 }
 ```
 
-**The execution fork is mandatory after the user approves the written document.** Do not infer the choice from phrases such as "start now," "use your judgment," or "don't block on me"; present both paths and ask the user to choose.
+The execution fork is mandatory only for the full workflow after the user approves a written design. Do not ask it for class-1 work, which returned directly above. Do not infer the choice for a genuine multi-task implementation from phrases such as "start now," "use your judgment," or "don't block on me"; present both paths and ask the user to choose.
 
-- **Lightweight / inline:** implement the design doc's `## Implementation Tasks` in the current session, invoking `superpowers:test-driven-development` per task and running Setup → work → Code Review → Finalize.
-- **Subagent workflow:** use the approved design doc's `## Implementation Tasks` as the plan and invoke `superpowers:subagent-driven-development` for in-session delegated execution, or `superpowers:executing-plans` when the user wants a separate-session handoff.
+- **Lightweight / inline:** implement the approved design's `## Implementation Tasks` in the current session, applying TDD only to production-code tasks and using Setup → work → Code Review → Finalize only when the risk and scope require them.
+- **Subagent workflow:** use the approved design's `## Implementation Tasks` as the plan and invoke `superpowers:subagent-driven-development` for genuinely independent, multi-task work, or `superpowers:executing-plans` when the user wants a separate-session handoff.
 
 Do NOT invoke frontend-design, mcp-builder, or any other implementation skill directly from brainstorming; enter one of the two paths above first.
 
@@ -125,18 +129,20 @@ Do NOT invoke frontend-design, mcp-builder, or any other implementation skill di
 
 ## After the Design
 
+This section applies only to the full workflow. Class-1 work has already returned and must not create a design document.
+
 **Documentation:**
 
-- Write the validated design (spec) to `docs/superpowers/<tkid>-<slug>/design_spec.md` (`<tkid>` = the ticket id, `<slug>` = a short kebab-case topic slug). See `herdle-tk-artifacts` for the naming and lifecycle convention.
+- Write the validated design (spec) to `docs/superpowers/<tkid>-<slug>/design_spec.md` only when the design is needed for multi-step coordination, substantive implementation, or an explicit durable handoff. See `superpowers:artifact-retention-policy`; these are temporary working files by default.
   - (User preferences for spec location override this default)
 - Use elements-of-style:writing-clearly-and-concisely skill if available
-- **Never commit.** docs/superpowers artifacts are local working docs, not version control — never `git add` or `git commit` them. Any full plan (from writing-plans) goes in this same `<tkid>-<slug>` directory, next to this doc.
+- Keep active design artifacts out of shipped documentation paths. At close, move lasting facts into source, tests, product docs, or the authoritative ticket/PR summary, then delete or archive the temporary files.
 
 **Implementation Tasks (append to the design doc):**
 
 The design doc ends with an `## Implementation Tasks` checklist — this is what makes the doc *the plan*, so a separate writing-plans pass isn't needed for the common case. Write the tasks **TDD-lite**: each task carries a title, the files it touches, what its test asserts (intent, not the code), and a one-line "done when". The implementing agent writes the real test and code live via `superpowers:test-driven-development` — do not spell out full code blocks or exact commands here.
 
-Wrap the work in the fixed **Setup** (first) and **Code Review** + **Finalize** (last two) tasks, in that order. These task contents are canonical here and apply in any harness; `herdle-tk-artifacts` supplies only Herdle lifecycle/gatekeeper stamping (`tk start`, `branch:` frontmatter, `lifecycle:` transitions).
+For work that genuinely needs lifecycle coordination, wrap the work in **Setup**, **Code Review**, and **Finalize** tasks. These are not universal gates: omit them for class-1 cleanup and any approved scope that excludes tickets, worktrees, formal review, or validation artifacts. `herdle-tk-artifacts` supplies Herdle lifecycle/gatekeeper stamping when Herdle is actually in use.
 
 ### Setup (first task)
 

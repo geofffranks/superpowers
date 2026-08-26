@@ -5,9 +5,15 @@ description: Use when implementation is complete and validated - verifies automa
 
 # Finishing a Development Branch
 
+## Applicability
+
+Use this only when branch/worktree integration, squashing, or a human manual-validation handoff is genuinely part of the approved work. It is not a default consequence of having a plan. A small Markdown, metadata, or config cleanup on the current workspace should finish with a focused verification and concise report instead.
+
+**Required shared policy:** Use `superpowers:artifact-retention-policy` before creating or retaining any validation record.
+
 ## Overview
 
-Complete implementation by verifying the **automated validation** passed,
+Complete eligible implementation work by verifying the **automated validation** passed,
 **squashing** the branch into one commit, **cleaning up the feature worktree**,
 and handing the human the **manual validation steps** to finish. Branch
 integration (push/merge/PR) is left to the human — this skill does not offer it.
@@ -39,9 +45,11 @@ Cannot finish until it passes.
 
 Stop. Don't proceed to Step 2.
 
-**If it passes:** continue. If automated validation was already run and recorded
-in the plan's validation document, you may rely on that record instead of
-re-running.
+**If it passes:** continue. If automated validation was already run after the
+final relevant mutation, its CI/session evidence remains valid; do not rerun an
+equivalent command solely because this skill was entered. Do not require or
+create a validation document unless validation itself is a durable deliverable
+under `superpowers:artifact-retention-policy`.
 
 ## Step 2: Squash the Branch's Commits Into One
 
@@ -87,10 +95,11 @@ it. Leave the workspace in place.
 
 ## Step 4: Present the Manual Validation Steps
 
-Present the manual validation steps from the plan's validation document to the
-human and ask them to complete them. Do not mark the manual steps done yourself,
-do not push/merge/open a PR, and do not advance the ticket past
-`pending-validation` until the human confirms completion.
+Present any manual validation steps that are part of the approved work. They may
+come from the plan, ticket, or a concise session summary; a separate validation
+document is not required. Do not mark human-owned steps done yourself, do not
+push/merge/open a PR, and do not advance a ticket past `pending-validation`
+until the human confirms completion.
 
 > "Automated validation passed, the branch is squashed, and the worktree is
 > cleaned up. Please complete these manual validation steps:

@@ -15,16 +15,12 @@ Write the test first. Watch it fail. Write minimal code to pass.
 
 ## When to Use
 
-**Always:**
-- New features
-- Bug fixes
-- Refactoring
-- Behavior changes
+Use for production-code features, bug fixes, refactors, and behavior changes where a test can express the durable behavior. Do not invoke TDD for documentation-only or metadata-only edits; use bounded semantic read-back and formatting/reference checks instead. Configuration-only changes follow the project's configuration validation, not a forced test-first cycle.
 
-**Exceptions (ask your human partner):**
-- Throwaway prototypes
-- Generated code
-- Configuration files
+**Exceptions:**
+- Documentation-only and metadata-only edits
+- Configuration files when the project has no executable contract for the change
+- Throwaway prototypes or generated code
 
 Thinking "skip TDD just this once"? Stop. That's rationalization.
 

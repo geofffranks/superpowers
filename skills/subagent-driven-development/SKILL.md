@@ -5,7 +5,13 @@ description: Use when executing implementation plans with independent tasks in t
 
 # Subagent-Driven Development
 
-Execute plan by dispatching a fresh implementer subagent per task, one independent dual-verdict task review after each, and exactly one fresh integration-focused final review at the end.
+## Applicability
+
+Use this only for class-3 multi-session/parallel work or another approved workflow that genuinely benefits from independent implementers and task-scoped review. It is inapplicable to class-1 small mechanical docs, metadata, or config cleanup and to any request that explicitly excludes subagents, formal review, or process artifacts. In those cases execute directly, use bounded read-back verification, and keep any notes in session storage.
+
+**Required shared policy:** Use `superpowers:artifact-retention-policy` for task briefs, reports, review packages, and cleanup decisions. These are active implementation material or ephemeral evidence, not shipped documentation.
+
+Execute plan by dispatching a fresh implementer subagent per task, one independent dual-verdict task review after each, and exactly one fresh integration-focused final review at the end **when this workflow is applicable**.
 
 ## Workflow contract
 
@@ -19,7 +25,7 @@ Execute plan by dispatching a fresh implementer subagent per task, one independe
 
 **Why subagents:** You delegate tasks to specialized agents with isolated context. By precisely crafting their instructions and context, you ensure they stay focused and succeed at their task. They should never inherit your session's context or history — you construct exactly what they need. This also preserves your own context for coordination work.
 
-**Core principle:** Fresh subagent per task + task review (spec + quality) + broad final review = high quality, fast iteration
+**Core principle:** For genuinely independent, multi-task work, a fresh subagent per task plus scoped review and one broad final review provides quality without repeating equivalent checks. Review depth is risk-based; two reviews and persistent reports are not universal requirements.
 
 **Workspace safety contract:** Before dispatch, inspect `git status --short --branch` and `git worktree list --porcelain`. Never dispatch an implementation, review, CI, squash, or overlay operation into a named worktree with staged or unstaged changes. If a disposable worktree is required, create a unique `tmp-*` path with a manifest (`path`, `purpose`, `base`, `owner`, `cleanup`) and install an `EXIT/INT/TERM` cleanup trap before doing work. Verify the exact result commit and changed paths before removing it; then assert the exact path is absent. Do not broadly prune unrelated worktrees.
 
@@ -233,7 +239,8 @@ final whole-branch review. When you fill a reviewer template:
 
 Everything you paste into a dispatch prompt — and everything a subagent
 prints back — stays resident in your context for the rest of the session
-and is re-read on every later turn. Hand artifacts over as files:
+and is re-read on every later turn. Hand artifacts over as files, using session
+storage or an ignored workspace area rather than active documentation paths:
 
 For review packages, task briefs, and CI artifacts, prefer files in the current repo's ignored `.superpowers/` area or a disposable `tmp-*` worktree. Record the artifact path and owner in the progress ledger. If a temporary worktree is used, its cleanup trap remains active through report collection and its removal is verified before the task is marked complete.
 
@@ -424,14 +431,11 @@ Done!
 
 ## Integration
 
-**Required workflow skills:**
-- **superpowers:using-git-worktrees** - Ensures isolated workspace (creates one or verifies existing)
-- **superpowers:brainstorming** - Creates the approved design and implementation-task checklist this skill executes
-- **superpowers:requesting-code-review** - Code review template for the final whole-branch review
-- **superpowers:finishing-a-development-branch** - Complete development after all tasks
+When this workflow is applicable, use only the supporting skills that fit the approved scope:
+- `superpowers:using-git-worktrees` when isolation is genuinely necessary.
+- `superpowers:requesting-code-review` for the chosen final integration review.
+- `superpowers:finishing-a-development-branch` when branch/worktree integration, squashing, or human manual validation is part of the work.
+- `superpowers:test-driven-development` for production-code tasks whose behavior is testable; do not force it onto docs/metadata-only tasks.
+- `superpowers:executing-plans` for a separate-session handoff instead of same-session execution.
 
-**Subagents should use:**
-- **superpowers:test-driven-development** - Subagents follow TDD for each task
-
-**Alternative workflow:**
-- **superpowers:executing-plans** - Use for parallel session instead of same-session execution
+Do not load this workflow at all for class-1 direct execution.

@@ -5,21 +5,23 @@ description: Use when completing tasks, implementing major features, or before m
 
 # Requesting Code Review
 
-Dispatch a code reviewer subagent to catch issues before they cascade. The reviewer gets precisely crafted context for evaluation — never your session's history. This keeps the reviewer focused on the work product, not your thought process, and preserves your own context for continued work.
+Dispatch a code reviewer subagent when scope and risk justify an independent review. The reviewer gets precisely crafted context for evaluation — never your session's history. This keeps the reviewer focused on the work product, not your thought process, and preserves your own context for continued work.
 
-**Core principle:** Review early, review often.
+**Core principle:** Review enough to catch material defects; do not turn every small edit into a review pipeline.
 
 ## When to Request Review
 
-**Mandatory:**
-- After each task in subagent-driven development
-- After completing major feature
-- Before merge to main
+Choose review depth by scope and risk. Explicit scope exclusions control generic defaults.
 
-**Optional but valuable:**
-- When stuck (fresh perspective)
-- Before refactoring (baseline check)
-- After fixing complex bug
+**Required when:**
+- The approved workflow requires a review for qualification-, security-, migration-, audit-sensitive, or other high-risk work.
+- A major feature or merge needs a fresh branch-level integration review.
+- A subagent-driven workflow is being used for genuinely independent implementation tasks; its task review and one final integration review are part of that chosen model.
+
+**Optional or inapplicable:**
+- A small mechanical Markdown, metadata, or config cleanup normally needs no reviewer agent; a focused read-back is sufficient.
+- Do not dispatch a reviewer merely because a plan exists, and do not run two independent reviews unless risk or the approved workflow requires it.
+- When review is inapplicable, record that decision in the session summary rather than creating a review marker or permanent report.
 
 ## How to Request
 

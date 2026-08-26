@@ -5,6 +5,10 @@ description: Use when starting feature work that needs isolation from current wo
 
 # Using Git Worktrees
 
+## Applicability
+
+Use a worktree when isolation is genuinely necessary for concurrent work, risky changes, or an approved branch workflow. Do not require one for a small Markdown, metadata, or config cleanup when the current workspace is the intended workspace and the request does not require isolation.
+
 ## Overview
 
 Ensure work happens in an isolated workspace. Prefer your platform's native worktree tools. Fall back to manual git worktrees only when no native tool is available.
